@@ -98,5 +98,3 @@ mod webrcade_feed_category_schema;
 mod webrcade_feed_item_props_schema;
 mod webrcade_feed_item_schema;
 mod webrcade_feed_schema;
-
-pub use std::vec::Vec;
