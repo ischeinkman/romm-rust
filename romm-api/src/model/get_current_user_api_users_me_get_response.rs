@@ -1,3 +1,2 @@
-use serde::{Deserialize, Serialize};
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct GetCurrentUserApiUsersMeGetResponse(pub serde_json::Value);
+use super::UserSchema;
+pub type GetCurrentUserApiUsersMeGetResponse = Option<UserSchema>;

@@ -4,14 +4,14 @@ use serde::{Deserialize, Serialize};
 pub struct UserSchema {
     pub avatar_path: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
-    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
-    pub email: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
     pub enabled: bool,
     pub id: i64,
-    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
-    pub last_active: serde_json::Value,
-    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
-    pub last_login: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_active: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_login: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub oauth_scopes: Vec<String>,
     pub role: Role,
