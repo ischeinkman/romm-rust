@@ -1,12 +1,10 @@
 use chrono::{DateTime, Utc};
 use md5hash::Md5Hash;
-use romm_api::*;
 use url::Url;
 mod database;
 mod md5hash;
 mod rommclient;
 use rommclient::RawClient;
-
 
 fn main() {
     let url = Url::parse("https://romm.k8s.ilans.dev/").unwrap();

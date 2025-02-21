@@ -7,7 +7,7 @@ use reqwest::Client as HttpClient;
 use reqwest::Error as HttpError;
 use reqwest::{Body, ClientBuilder, Response};
 use romm_api::{DetailedRomSchema, RomSchema, SaveSchema};
-use serde::de::{self, DeserializeOwned};
+use serde::de::DeserializeOwned;
 use std::{
     collections::HashMap,
     io::{self, Read},
@@ -23,7 +23,7 @@ use tokio::{
 use url::Url;
 
 use crate::{
-    md5hash::{md5, md5_stream, Md5Hash},
+    md5hash::{md5_stream, Md5Hash},
     SaveMeta,
 };
 

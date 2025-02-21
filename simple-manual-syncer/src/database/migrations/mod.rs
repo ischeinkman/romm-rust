@@ -28,7 +28,7 @@ pub fn apply_migrations(con: &mut Connection) -> Result<(), MigrationError> {
         let revert_error = migration.revert(con).err();
         return Err(MigrationError {
             version: migration.version,
-            error : Some(error),
+            error: Some(error),
             revert_error,
         });
     }

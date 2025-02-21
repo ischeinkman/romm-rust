@@ -1,7 +1,7 @@
 use std::path::Path;
 
-use rusqlite::Connection;
 use migrations::apply_migrations;
+use rusqlite::Connection;
 
 mod migrations;
 
@@ -17,6 +17,4 @@ impl SaveMetaDatabase {
         apply_migrations(&mut con)?;
         Ok(Self { con })
     }
-
-    
 }

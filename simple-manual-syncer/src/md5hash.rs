@@ -1,8 +1,7 @@
-use futures::{Stream, StreamExt, TryStream, TryStreamExt};
+use futures::{Stream, StreamExt, TryStreamExt};
 use md5::{Digest, Md5};
 use std::fmt::{self};
 use std::io::{self, Read};
-use std::pin::{pin, Pin};
 use std::str::FromStr;
 use thiserror::Error;
 
@@ -162,7 +161,7 @@ mod tests {
             0xa9, 0x6f, 0xf3, 0x7e, 0x9d, 0x45, 0x7f, 0x37, 0x7e, 0xd0, 0xed, 0x16, 0x92, 0x24,
             0xd5, 0x77,
         ]);
-        let mut cursor = Cursor::new(DATA);
+        let cursor = Cursor::new(DATA);
         let expected = md5(cursor).unwrap();
         assert_eq!(expected, EXPECTED);
 

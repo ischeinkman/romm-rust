@@ -1,12 +1,11 @@
 use super::*;
 use rusqlite::Connection;
 
-
 pub const fn base_schema() -> DatabaseMigration {
     DatabaseMigration {
-        version : 2, 
-        forward : create_saves_table, 
-        backwards : delete_saves_table
+        version: 2,
+        forward: create_saves_table,
+        backwards: delete_saves_table,
     }
 }
 
@@ -26,7 +25,7 @@ CREATE TABLE saves(
     Ok(())
 }
 
-fn delete_saves_table(con : &mut Connection) -> Result<(), rusqlite::Error> {
+fn delete_saves_table(con: &mut Connection) -> Result<(), rusqlite::Error> {
     con.execute("DROP TABLE saves;", ())?;
     Ok(())
 }
