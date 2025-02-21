@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 pub struct SaveSchema {
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub download_path: String,
-    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
-    pub emulator: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emulator: Option<String>, 
     pub file_extension: String,
     pub file_name: String,
     pub file_name_no_ext: String,
@@ -14,8 +14,8 @@ pub struct SaveSchema {
     pub full_path: String,
     pub id: i64,
     pub rom_id: i64,
-    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
-    pub screenshot: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub screenshot: Option<String>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
     pub user_id: i64,
 }
