@@ -185,7 +185,6 @@ impl RommClient {
             .await
             .map_err(From::from)
     }
-    #[expect(unused)]
     pub async fn find_save_matching(&self, meta: &SaveMeta) -> Result<RommSaveMeta, anyhow::Error> {
         let all_possible = self.saves_for_rom(&meta.rom).await?;
         let mut filtered = all_possible.into_iter().filter(|save| {
