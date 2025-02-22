@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use futures::stream::FuturesUnordered;
-use futures::stream::{self, StreamExt, TryStreamExt};
+use futures::stream::TryStreamExt;
 use reqwest::Client as HttpClient;
 use reqwest::Error as HttpError;
 use reqwest::{Body, ClientBuilder, Response};
@@ -13,6 +13,7 @@ use tokio::{
     fs::{self, File},
     io::AsyncWriteExt,
 };
+use tracing::{debug, trace};
 use url::Url;
 
 use crate::{
@@ -46,6 +47,7 @@ impl RawClient {
             self.url_base.as_str().trim_end_matches('/'),
             endpoint.trim_matches('/')
         );
+        trace!("Calling PUT on ROMM url {n}");
         self.client
             .put(n.as_str())
             .header("Authorization", &self.auth_value)
@@ -64,6 +66,7 @@ impl RawClient {
             self.url_base.as_str().trim_end_matches('/'),
             endpoint.trim_matches('/')
         );
+        trace!("Calling POST on ROMM url {n}");
         self.client
             .post(n.as_str())
             .header("Authorization", &self.auth_value)
@@ -79,6 +82,7 @@ impl RawClient {
             self.url_base.as_str().trim_end_matches('/'),
             endpoint.trim_matches('/')
         );
+        trace!("Calling GET on ROMM url {n}");
         self.client
             .get(n.as_str())
             .header("Authorization", &self.auth_value)
@@ -103,7 +107,9 @@ impl RommClient {
         let rom_id_cache = RwLock::new(HashMap::new());
         Self { raw, rom_id_cache }
     }
+
     #[expect(unused)]
+    #[tracing::instrument(skip(self))]
     pub async fn push_save(&self, save: &Path, meta: &RommSaveMeta) -> Result<(), anyhow::Error> {
         let mut fh = File::open(save).await?;
         if let Some(prev) = meta.save_id {
@@ -120,7 +126,7 @@ impl RommClient {
             Ok(())
         }
     }
-    #[expect(unused)]
+    #[tracing::instrument(skip(self))]
     pub async fn pull_save(&self, save: &Path, meta: &RommSaveMeta) -> Result<(), anyhow::Error> {
         let tmp_fname = save.with_extension(timestamp_now().to_rfc3339());
         let mut fh = File::create_new(&tmp_fname).await?;
@@ -137,17 +143,21 @@ impl RommClient {
         fs::rename(tmp_fname, save).await?;
         Ok(())
     }
+    #[tracing::instrument(skip(self))]
     async fn rom_id(&self, rom: &str) -> Result<i64, anyhow::Error> {
+        trace!("Resolving ROMM id for rom {rom}.");
         if let Some(id) = self
             .rom_id_cache
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .get(rom)
         {
+            trace!("Cache hit: {id}");
             return Ok(*id);
         }
         Ok(self.rom_schema(rom).await?.id)
     }
+    #[tracing::instrument(skip(self))]
     async fn rom_schema(&self, rom: &str) -> Result<RomSchema, anyhow::Error> {
         let encoded = url::form_urlencoded::byte_serialize(rom.as_bytes()).fold(
             String::new(),
@@ -176,6 +186,8 @@ impl RommClient {
             .insert(rom.to_owned(), found.id);
         Ok(found)
     }
+
+    #[tracing::instrument(skip(self))]
     async fn saves_for_rom(&self, rom: &str) -> Result<Vec<RommSaveMeta>, anyhow::Error> {
         let detailed_schema = self
             .raw
@@ -185,8 +197,12 @@ impl RommClient {
             .await
             .map_err(From::from)
     }
+
+    #[tracing::instrument(skip(self))]
     pub async fn find_save_matching(&self, meta: &SaveMeta) -> Result<RommSaveMeta, anyhow::Error> {
+        debug!("Looking for saves matching given metadata.");
         let all_possible = self.saves_for_rom(&meta.rom).await?;
+        debug!("Found {} possible saves.", all_possible.len());
         let mut filtered = all_possible.into_iter().filter(|save| {
             if save.meta.hash == meta.hash {
                 return true;
@@ -274,6 +290,7 @@ async fn romm_save_md5_size(
     Ok((hash, size_counter.load(Ordering::Acquire)))
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RommSaveMeta {
     pub rom_id: i64,
     pub save_id: Option<i64>,
