@@ -1,16 +1,14 @@
-use std::{env, io};
-
 use chrono::{DateTime, Utc};
 use deviceclient::DeviceMeta;
-use futures::FutureExt;
 use md5hash::{md5, Md5Hash};
+use std::{env, path::Path};
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber::{fmt::format::json, util::SubscriberInitExt, EnvFilter, FmtSubscriber};
+use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
 use url::Url;
 mod database;
 mod md5hash;
 mod rommclient;
-use rommclient::{RawClient, RommClient};
+use rommclient::RommClient;
 mod deviceclient;
 
 fn main() {
@@ -60,7 +58,8 @@ async fn async_main() {
     let rom = &args[1];
     let save = &args[2];
 
-    let device_meta = DeviceMeta::from_path(rom.clone(), save.as_ref())
+    let rom_name = Path::new(rom).file_name().unwrap().to_str().unwrap();
+    let device_meta = DeviceMeta::from_path(rom_name.to_owned(), save.as_ref())
         .await
         .unwrap();
     let romm_meta = cl.find_save_matching(&device_meta.meta).await.unwrap();
@@ -116,6 +115,7 @@ pub enum SyncDecision {
     PullToDevice,
 }
 
+#[tracing::instrument]
 pub fn decide_action(
     device_save: &SaveMeta,
     remote_save: &SaveMeta,
