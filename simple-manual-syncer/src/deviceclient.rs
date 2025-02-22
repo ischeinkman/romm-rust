@@ -1,5 +1,8 @@
 use std::{
-    io, os::unix::fs::MetadataExt, path::{Path, PathBuf}
+    io,
+    os::unix::fs::MetadataExt,
+    path::{Path, PathBuf},
+    time::SystemTime,
 };
 
 use chrono::{DateTime, Utc};
@@ -27,8 +30,8 @@ impl DeviceMeta {
         debug!("Building device-level metadata for rom {rom} save at path {path:?}");
         let path = path.to_owned();
         let fs_meta = fs::metadata(&path).await?;
-        let created = DateTime::<Utc>::from(fs_meta.created()?);
-        let updated = DateTime::<Utc>::from(fs_meta.modified()?);
+        let created = unwrap_timestamp(fs_meta.created())?;
+        let updated = unwrap_timestamp(fs_meta.modified())?;
         let size = fs_meta.size();
         debug!("Retrieved metadata information. Now building md5 hash...");
         let byte_stream = stream::try_unfold(File::open(&path).await?, |mut fh| async move {
@@ -43,7 +46,7 @@ impl DeviceMeta {
             }
         });
         let hash = md5_stream(byte_stream).await?;
-        debug!("Finished retrieving save information.");
+        debug!("Finished retrieving device save information.");
         let name = path.file_name().unwrap().to_string_lossy();
         let name = name
             .split_once('.')
@@ -60,4 +63,17 @@ impl DeviceMeta {
         };
         Ok(Self::new(path, meta))
     }
+}
+
+/// Helper to unwrap a filesystem timestamp, defaulting to the unix epoch on
+/// filesystems that don't support timestamps.
+fn unwrap_timestamp(raw: Result<SystemTime, io::Error>) -> Result<DateTime<Utc>, io::Error> {
+    let systime = match raw {
+        Ok(t) => t,
+        Err(e) if e.kind() == io::ErrorKind::Unsupported => SystemTime::UNIX_EPOCH,
+        Err(e) => {
+            return Err(e);
+        }
+    };
+    Ok(DateTime::from(systime))
 }
