@@ -18,7 +18,8 @@ CREATE TABLE saves(
     emulator TEXT, 
     created TEXT NOT NULL, 
     updated TEXT NOT NULL, 
-    md5 TEXT NOT NULL 
+    md5 TEXT NOT NULL, 
+    size INTEGER NOT NULL 
 );"#,
         (),
     )?;

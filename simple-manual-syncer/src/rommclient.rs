@@ -1,21 +1,14 @@
 use chrono::{DateTime, Utc};
-use futures::{
-    stream::{self, StreamExt, TryStreamExt},
-    TryStream,
-};
+use futures::stream::FuturesUnordered;
+use futures::stream::{self, StreamExt, TryStreamExt};
 use reqwest::Client as HttpClient;
 use reqwest::Error as HttpError;
 use reqwest::{Body, ClientBuilder, Response};
 use romm_api::{DetailedRomSchema, RomSchema, SaveSchema};
 use serde::de::DeserializeOwned;
-use std::{
-    collections::HashMap,
-    io::{self, Read},
-    path::Path,
-    sync::RwLock,
-    task::Poll,
-    time::SystemTime,
-};
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
+use std::{collections::HashMap, path::Path, sync::RwLock, time::SystemTime};
 use tokio::{
     fs::{self, File},
     io::AsyncWriteExt,
@@ -105,6 +98,11 @@ pub struct RommClient {
 }
 
 impl RommClient {
+    pub fn new(url_base: Url, auth_value: String) -> Self {
+        let raw = RawClient::new(url_base, auth_value);
+        let rom_id_cache = RwLock::new(HashMap::new());
+        Self { raw, rom_id_cache }
+    }
     #[expect(unused)]
     pub async fn push_save(&self, save: &Path, meta: &RommSaveMeta) -> Result<(), anyhow::Error> {
         let mut fh = File::open(save).await?;
@@ -178,8 +176,7 @@ impl RommClient {
             .insert(rom.to_owned(), found.id);
         Ok(found)
     }
-    #[expect(unused)]
-    pub async fn saves_for_rom(&self, rom: &str) -> Result<Vec<RommSaveMeta>, anyhow::Error> {
+    async fn saves_for_rom(&self, rom: &str) -> Result<Vec<RommSaveMeta>, anyhow::Error> {
         let detailed_schema = self
             .raw
             .get::<DetailedRomSchema>(&format!("/api/roms/{}", self.rom_id(rom).await?))
@@ -188,27 +185,61 @@ impl RommClient {
             .await
             .map_err(From::from)
     }
+    #[expect(unused)]
+    pub async fn find_save_matching(&self, meta: &SaveMeta) -> Result<RommSaveMeta, anyhow::Error> {
+        let all_possible = self.saves_for_rom(&meta.rom).await?;
+        let mut filtered = all_possible.into_iter().filter(|save| {
+            if save.meta.hash == meta.hash {
+                return true;
+            }
+            match (save.meta.emulator.as_deref(), meta.emulator.as_deref()) {
+                (Some(a), Some(b)) if !a.eq_ignore_ascii_case(b) => {
+                    return false;
+                }
+                _ => {}
+            };
+            save.meta.name == meta.name
+        });
+        let Some(found) = filtered.next() else {
+            return Ok(RommSaveMeta {
+                rom_id: self.rom_id(&meta.rom).await?,
+                save_id: None,
+                download_path: None,
+                meta: SaveMeta::new_empty(
+                    meta.rom.clone(),
+                    meta.name.clone(),
+                    meta.emulator.clone(),
+                ),
+            });
+        };
+        if filtered.next().is_some() {
+            return Err(anyhow::anyhow!("Found multiple matching criteria."));
+        }
+        Ok(found)
+    }
 }
 
 async fn parse_romm_saves(
     client: &RawClient,
     rom_data: &DetailedRomSchema,
 ) -> Result<Vec<RommSaveMeta>, HttpError> {
-    stream::iter(rom_data.user_saves.iter())
-        .then(|save| async {
-            let rom = rom_data.file_name.clone();
-            let name = save.file_name.clone();
+    let mut runner = FuturesUnordered::new();
+    for save in rom_data.user_saves.iter() {
+        let fut = async {
+            let rom = rom_data.file_name_no_ext.clone();
+            let name = save.file_name_no_ext.clone();
             let emulator = save.emulator.clone();
             let created = save.created_at;
             let updated = save.updated_at;
-            let md5 = romm_save_md5(client, save).await?;
+            let (hash, size) = romm_save_md5_size(client, save).await?;
             let meta = SaveMeta {
                 rom,
                 name,
                 emulator,
                 created,
                 updated,
-                md5,
+                hash,
+                size,
             };
             Result::<_, HttpError>::Ok(RommSaveMeta::from_data(
                 rom_data.id,
@@ -216,32 +247,32 @@ async fn parse_romm_saves(
                 Some(save.download_path.clone()),
                 meta,
             ))
-        })
-        .try_collect()
-        .await
+        };
+        runner.push(fut);
+    }
+    let mut retvl = Vec::new();
+    while let Some(res) = runner.try_next().await? {
+        retvl.push(res);
+    }
+    Ok(retvl)
 }
 
-async fn romm_save_md5(client: &RawClient, save: &SaveSchema) -> Result<Md5Hash, HttpError> {
+async fn romm_save_md5_size(
+    client: &RawClient,
+    save: &SaveSchema,
+) -> Result<(Md5Hash, u64), HttpError> {
     let raw_resp = client
         .raw_get(&save.download_path)
         .await?
         .error_for_status()?
         .bytes_stream();
-    md5_stream(raw_resp).await.map_err(From::from)
-}
-
-fn wrap_reader(mut rdr: impl io::Read) -> impl TryStream<Ok = Box<[u8]>, Error = io::Error> {
-    futures::stream::poll_fn(move |_| {
-        let mut buff = vec![0; 4 * 1024 * 1024];
-        match rdr.read(&mut buff) {
-            Ok(0) => Poll::Ready(None),
-            Ok(n) => {
-                buff.resize(n, 0);
-                Poll::Ready(Some(Ok(buff.into_boxed_slice())))
-            }
-            Err(e) => Poll::Ready(Some(Err(e))),
-        }
-    })
+    let size_counter = AtomicU64::new(0);
+    let raw_resp = raw_resp.map_ok(|chunk| {
+        size_counter.fetch_add(chunk.len() as _, Ordering::Release);
+        chunk
+    });
+    let hash = md5_stream(raw_resp).await?;
+    Ok((hash, size_counter.load(Ordering::Acquire)))
 }
 
 pub struct RommSaveMeta {
