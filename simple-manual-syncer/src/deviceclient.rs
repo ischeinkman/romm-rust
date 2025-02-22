@@ -8,6 +8,7 @@ use tokio::{
     fs::{self, File},
     io::AsyncReadExt,
 };
+use tracing::debug;
 
 use crate::{md5hash::md5_stream, SaveMeta};
 
@@ -21,12 +22,15 @@ impl DeviceMeta {
     pub fn new(path: PathBuf, meta: SaveMeta) -> Self {
         Self { path, meta }
     }
-    pub async fn from_path(rom: String, path: impl AsRef<Path>) -> io::Result<Self> {
-        let path = path.as_ref().to_owned();
+    #[tracing::instrument]
+    pub async fn from_path(rom: String, path: &Path) -> io::Result<Self> {
+        debug!("Building device-level metadata for rom {rom} save at path {path:?}");
+        let path = path.to_owned();
         let fs_meta = fs::metadata(&path).await?;
         let created = DateTime::<Utc>::from(fs_meta.created()?);
         let updated = DateTime::<Utc>::from(fs_meta.modified()?);
         let size = fs_meta.size();
+        debug!("Retrieved metadata information. Now building md5 hash...");
         let byte_stream = stream::try_unfold(File::open(&path).await?, |mut fh| async move {
             let mut buf = vec![0; 4 * 1024 * 1024];
             match fh.read(&mut buf).await {
@@ -39,6 +43,7 @@ impl DeviceMeta {
             }
         });
         let hash = md5_stream(byte_stream).await?;
+        debug!("Finished retrieving save information.");
         let name = path.file_name().unwrap().to_string_lossy();
         let name = name
             .split_once('.')

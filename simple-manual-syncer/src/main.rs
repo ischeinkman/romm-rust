@@ -1,9 +1,11 @@
-use std::io;
+use std::{env, io};
 
 use chrono::{DateTime, Utc};
 use deviceclient::DeviceMeta;
 use futures::FutureExt;
 use md5hash::{md5, Md5Hash};
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber::{fmt::format::json, util::SubscriberInitExt, EnvFilter, FmtSubscriber};
 use url::Url;
 mod database;
 mod md5hash;
@@ -12,6 +14,7 @@ use rommclient::{RawClient, RommClient};
 mod deviceclient;
 
 fn main() {
+    init_logger();
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -19,6 +22,36 @@ fn main() {
     rt.block_on(async_main());
 }
 
+fn init_logger() {
+    let trace_env = EnvFilter::builder()
+        .with_default_directive(LevelFilter::INFO.into())
+        .with_env_var("ROM_SYNC_LOG")
+        .from_env()
+        .unwrap();
+    let mut subscriber = FmtSubscriber::builder()
+        .with_env_filter(trace_env)
+        .with_file(true)
+        .with_line_number(true);
+    let no_color = env::var_os("NO_COLOR").map_or(false, |s| !s.eq_ignore_ascii_case("0"));
+    let json_log = env::var_os("ROM_SYNC_LOG_JSON").map_or(false, |s| !s.eq_ignore_ascii_case("0"));
+    match (no_color, json_log) {
+        (false, false) => {
+            subscriber = subscriber.with_ansi(true);
+        }
+        (true, false) => {
+            subscriber = subscriber.with_ansi(false);
+        }
+        (false, true) => {
+            todo!()
+        }
+        (true, true) => {
+            todo!()
+        }
+    }
+    subscriber.finish().init();
+}
+
+#[tracing::instrument]
 async fn async_main() {
     let url = Url::parse("https://romm.k8s.ilans.dev/").unwrap();
     let auth = format!("Basic {}", std::env::var("ROMM_API_TOKEN").unwrap());
@@ -27,9 +60,11 @@ async fn async_main() {
     let rom = &args[1];
     let save = &args[2];
 
-    let device_meta = DeviceMeta::from_path(rom.clone(), &save).await.unwrap();
+    let device_meta = DeviceMeta::from_path(rom.clone(), save.as_ref())
+        .await
+        .unwrap();
     let romm_meta = cl.find_save_matching(&device_meta.meta).await.unwrap();
-    
+
     let action = decide_action(&device_meta.meta, &romm_meta.meta, &device_meta.meta).unwrap();
     println!("{:?}", action);
 }
@@ -42,7 +77,7 @@ pub struct SaveMeta {
     pub created: DateTime<Utc>,
     pub updated: DateTime<Utc>,
     pub hash: Md5Hash,
-    pub size : u64, 
+    pub size: u64,
 }
 impl SaveMeta {
     pub fn timestamp(&self) -> DateTime<Utc> {
@@ -59,12 +94,11 @@ impl SaveMeta {
             created,
             updated,
             hash,
-            size : 0, 
+            size: 0,
         }
     }
     pub fn is_empty(&self) -> bool {
         self.size == 0
-
     }
 }
 
