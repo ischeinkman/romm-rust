@@ -1,4 +1,4 @@
-use futures::{Stream, StreamExt, TryStreamExt};
+use futures::{Stream, TryStreamExt};
 use md5::{Digest, Md5};
 use std::fmt::{self};
 use std::io::{self, Read};
