@@ -1,15 +1,20 @@
+use std::env;
+
 use chrono::{DateTime, Utc};
-use deviceclient::DeviceMeta;
-use md5hash::{md5, Md5Hash};
-use std::{env, path::Path};
+use config::Config;
+use futures::TryStreamExt;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
-use url::Url;
+
 mod database;
 mod md5hash;
+use md5hash::{md5, Md5Hash};
 mod rommclient;
 use rommclient::RommClient;
 mod deviceclient;
+use deviceclient::DeviceMeta;
+mod config;
+mod utils;
 
 fn main() {
     init_logger();
@@ -51,19 +56,28 @@ fn init_logger() {
 
 #[tracing::instrument]
 async fn async_main() {
-    let url = Url::parse("https://romm.k8s.ilans.dev/").unwrap();
-    let auth = format!("Basic {}", std::env::var("ROMM_API_TOKEN").unwrap());
-    let cl = RommClient::new(url, auth);
     let args = std::env::args().collect::<Vec<_>>();
-    let save = &args[1];
+    let cfg = Config::load(args.into_iter().skip(1)).unwrap();
+    let cl = RommClient::new(
+        cfg.romm.url.clone().unwrap(),
+        cfg.romm.api_key.clone().unwrap(),
+    );
 
-    let device_meta = DeviceMeta::from_path( save.as_ref())
+    config::save_finding::possible_saves(&cfg)
+        .try_for_each(|save| {
+            let cl = &cl;
+            async move {
+                let device_meta = DeviceMeta::from_path(save.as_ref()).await.unwrap();
+                let romm_meta = cl.find_save_matching(&device_meta.meta).await.unwrap();
+
+                let action =
+                    decide_action(&device_meta.meta, &romm_meta.meta, &device_meta.meta).unwrap();
+                println!("{:?}", action);
+                Ok(())
+            }
+        })
         .await
         .unwrap();
-    let romm_meta = cl.find_save_matching(&device_meta.meta).await.unwrap();
-
-    let action = decide_action(&device_meta.meta, &romm_meta.meta, &device_meta.meta).unwrap();
-    println!("{:?}", action);
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

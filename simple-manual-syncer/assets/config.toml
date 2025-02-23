@@ -1,0 +1,11 @@
+[system]
+# Current allowed variables:
+# * $EMULATOR
+# * $ROM 
+# * $EXT (not actually used)
+
+saves = "/media/ilan/9581-B0A5/Saves/CurrentProfile/saves/$EMULATOR/$ROM.$EXT"
+
+[romm]
+#url = ""
+#api-key = ""
