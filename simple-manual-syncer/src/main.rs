@@ -82,7 +82,17 @@ async fn async_main() {
 
                 let action =
                     decide_action(&device_meta.meta, &romm_meta.meta, &device_meta.meta).unwrap();
-                println!("{:?}", action);
+                info!("{:?} ({:?}, {:?}) => {:?}", device_meta.path, romm_meta.rom_id, romm_meta.save_id, action);
+                match action {
+                    SyncDecision::Noop => {}
+                    SyncDecision::PullToDevice => {
+                        //cl.pull_save(&device_meta.path, &romm_meta).await.unwrap();
+                        info!("WOULD PULL {:?} => {:?}", romm_meta, device_meta.path);
+                    }
+                    SyncDecision::PushToRemote => {
+                        cl.push_save(&device_meta.path, &romm_meta).await.unwrap();
+                    }
+                }
                 Ok(())
             }
         })

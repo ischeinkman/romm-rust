@@ -1,6 +1,8 @@
 use futures::stream;
 use futures::stream::FuturesUnordered;
 use futures::stream::TryStreamExt;
+use reqwest::multipart::Form;
+use reqwest::multipart::Part;
 use reqwest::Client as HttpClient;
 use reqwest::Error as HttpError;
 use reqwest::{Body, ClientBuilder, Response};
@@ -12,6 +14,7 @@ use std::sync::atomic::Ordering;
 use std::{collections::HashMap, path::Path, sync::RwLock};
 use thiserror::Error;
 use tokio::fs::File;
+use tracing::info;
 use tracing::{debug, trace};
 use url::Url;
 
@@ -56,6 +59,7 @@ impl RawClient {
             .await?
             .error_for_status()
     }
+    #[expect(unused)]
     pub async fn raw_post(
         &self,
         endpoint: &str,
@@ -74,6 +78,24 @@ impl RawClient {
             .send()
             .await?
             .error_for_status()
+    }
+    pub async fn raw_post_form(
+        &self,
+        endpoint: &str,
+        body: impl Into<Form>,
+    ) -> Result<Response, HttpError> {
+        let n = format!(
+            "{}/{}",
+            self.url_base.as_str().trim_end_matches('/'),
+            endpoint.trim_matches('/')
+        );
+        trace!("Calling POST on ROMM url {n}");
+        let req = self
+            .client
+            .post(n.as_str())
+            .header("Authorization", &self.auth_value)
+            .multipart(body.into());
+        req.send().await?.error_for_status()
     }
 
     pub async fn raw_get(&self, endpoint: &str) -> Result<Response, HttpError> {
@@ -111,20 +133,33 @@ impl RommClient {
     #[expect(unused)]
     #[tracing::instrument(skip(self))]
     pub async fn push_save(&self, save: &Path, meta: &RommSaveMeta) -> Result<(), RommError> {
-        let mut fh = File::open(save).await?;
         if let Some(prev) = meta.save_id {
+            let mut fh = File::open(save).await?;
+            info!(
+                "Updating ROMM save {}/{} from local path {}.",
+                meta.rom_id,
+                prev,
+                save.display()
+            );
             let ep = format!("/api/saves/{prev}");
             self.raw.raw_put(&ep, fh).await?;
-            Ok(())
         } else {
-            let mut ep = format!("/api/saves?rom={}", meta.rom_id);
+            info!(
+                "Pushing new ROMM save to rom {} from local path {}.",
+                meta.rom_id,
+                save.display()
+            );
+            let mut ep = format!("/api/saves?rom_id={}", meta.rom_id);
             if let Some(emu) = meta.meta.emulator.as_deref() {
                 ep.push_str("&emulator=");
                 ep.push_str(emu);
             }
-            self.raw.raw_post(&ep, fh).await?;
-            Ok(())
+
+            let mut form = Form::new().part("saves", Part::file(save).await?);
+            self.raw.raw_post_form(&ep, form).await?;
         }
+        info!("Finished save upload.");
+        Ok(())
     }
     #[tracing::instrument(skip(self))]
     pub async fn pull_save(&self, save: &Path, meta: &RommSaveMeta) -> Result<(), anyhow::Error> {
@@ -132,6 +167,13 @@ impl RommClient {
             .download_path
             .as_deref()
             .ok_or_else(|| anyhow::anyhow!("Download path not found."))?;
+        info!(
+            "Pulling ROMM save {}/{} to local path {}.",
+            meta.rom_id,
+            meta.save_id.unwrap(),
+            save.display()
+        );
+        debug!("Starting download: {save:?} {meta:?}");
 
         let dl_stream =
             stream::try_unfold(self.raw.raw_get(ep).await?, move |mut resp| async move {
@@ -142,6 +184,7 @@ impl RommClient {
                 }
             });
         download(dl_stream, save).await?;
+        info!("Finished ROMM save.");
         Ok(())
     }
     #[tracing::instrument(skip(self))]

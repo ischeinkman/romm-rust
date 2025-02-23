@@ -10,7 +10,7 @@ embedded-graphics = "0.8.1"
 futures = "0.3.31"
 linkme = "0.3.31"
 md-5 = "0.10.6"
-reqwest = { version = "0.12.12", features = ["stream"] }
+reqwest = { version = "0.12.12", features = ["stream", "multipart"] }
 romm-api = { path = "../romm-api" }
 rusqlite = { version = "0.33.0", features = ["bundled", "serde_json", "url", "chrono"] }
 serde = { version = "1.0.217", features = ["derive"] }
