@@ -1,6 +1,9 @@
 use futures::stream;
 use futures::stream::FuturesUnordered;
 use futures::stream::TryStreamExt;
+use reqwest::header::HeaderMap;
+use reqwest::header::HeaderName;
+use reqwest::header::HeaderValue;
 use reqwest::multipart::Form;
 use reqwest::multipart::Part;
 use reqwest::Client as HttpClient;
@@ -26,17 +29,22 @@ use crate::{
 
 pub struct RawClient {
     client: HttpClient,
-    auth_value: String,
     url_base: Url,
 }
 
 impl RawClient {
     pub fn new(url_base: Url, auth_value: String) -> Self {
-        let client = ClientBuilder::new().build().unwrap();
+        let mut default_headers = HeaderMap::new();
+        let mut auth_header = HeaderValue::from_bytes(auth_value.as_bytes()).unwrap();
+        auth_header.set_sensitive(true);
+        default_headers.insert(HeaderName::from_static("authorization"), auth_header);
+        let client = ClientBuilder::new()
+            .default_headers(default_headers)
+            .build()
+            .unwrap();
         Self {
             client,
             url_base,
-            auth_value,
         }
     }
 
@@ -53,7 +61,6 @@ impl RawClient {
         trace!("Calling PUT on ROMM url {n}");
         self.client
             .put(n.as_str())
-            .header("Authorization", &self.auth_value)
             .body(body)
             .send()
             .await?
@@ -73,7 +80,6 @@ impl RawClient {
         trace!("Calling POST on ROMM url {n}");
         self.client
             .post(n.as_str())
-            .header("Authorization", &self.auth_value)
             .body(body)
             .send()
             .await?
@@ -89,11 +95,10 @@ impl RawClient {
             self.url_base.as_str().trim_end_matches('/'),
             endpoint.trim_matches('/')
         );
-        trace!("Calling POST on ROMM url {n}");
+        trace!("Calling POST (with form) on ROMM url {n}");
         let req = self
             .client
             .post(n.as_str())
-            .header("Authorization", &self.auth_value)
             .multipart(body.into());
         req.send().await?.error_for_status()
     }
@@ -107,7 +112,6 @@ impl RawClient {
         trace!("Calling GET on ROMM url {n}");
         self.client
             .get(n.as_str())
-            .header("Authorization", &self.auth_value)
             .send()
             .await?
             .error_for_status()
@@ -130,11 +134,10 @@ impl RommClient {
         Self { raw, rom_id_cache }
     }
 
-    #[expect(unused)]
     #[tracing::instrument(skip(self))]
     pub async fn push_save(&self, save: &Path, meta: &RommSaveMeta) -> Result<(), RommError> {
         if let Some(prev) = meta.save_id {
-            let mut fh = File::open(save).await?;
+            let fh = File::open(save).await?;
             info!(
                 "Updating ROMM save {}/{} from local path {}.",
                 meta.rom_id,
@@ -155,7 +158,7 @@ impl RommClient {
                 ep.push_str(emu);
             }
 
-            let mut form = Form::new().part("saves", Part::file(save).await?);
+            let form = Form::new().part("saves", Part::file(save).await?);
             self.raw.raw_post_form(&ep, form).await?;
         }
         info!("Finished save upload.");
