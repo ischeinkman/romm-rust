@@ -9,13 +9,13 @@ mod scaffolding;
 
 #[derive(Debug, Error)]
 #[error("Error applying migration {version}: {error:?} (Revert error: {revert_error:?})")]
-pub struct MigrationError {
+pub struct MigrationErrorInner {
     pub version: usize,
     pub error: Option<rusqlite::Error>,
     pub revert_error: Option<rusqlite::Error>,
 }
 
-impl MigrationError {
+impl MigrationErrorInner {
     pub fn from_raw(raw: rusqlite::Error) -> Self {
         Self {
             version: 0,
@@ -25,8 +25,24 @@ impl MigrationError {
     }
 }
 
+#[derive(Debug, Error)]
+#[error(transparent)]
+pub struct MigrationError(#[from] Box<MigrationErrorInner>);
+
+impl From<MigrationErrorInner> for MigrationError {
+    fn from(value: MigrationErrorInner) -> Self {
+        Self(Box::new(value))
+    }
+}
+
+impl MigrationError {
+    pub fn from_raw(raw: rusqlite::Error) -> Self {
+        Self::from(MigrationErrorInner::from_raw(raw))
+    }
+}
+
 pub fn apply_migrations(con: &mut Connection) -> Result<(), MigrationError> {
-    let version = database_version(con).map_err(|e| MigrationError {
+    let version = database_version(con).map_err(|e| MigrationErrorInner {
         version: 0,
         error: Some(e),
         revert_error: None,
@@ -36,18 +52,19 @@ pub fn apply_migrations(con: &mut Connection) -> Result<(), MigrationError> {
             continue;
         };
         let revert_error = migration.revert(con).err();
-        return Err(MigrationError {
+        return Err(MigrationErrorInner {
             version: migration.version,
             error: Some(error),
             revert_error,
-        });
+        }
+        .into());
     }
     Ok(())
 }
 
-#[expect(unused)]
+#[cfg_attr(not(test), expect(unused))]
 pub fn revert_migrations(con: &mut Connection) -> Result<(), MigrationError> {
-    let version = database_version(con).map_err(|e| MigrationError {
+    let version = database_version(con).map_err(|e| MigrationErrorInner {
         version: 0,
         error: None,
         revert_error: Some(e),
@@ -59,11 +76,12 @@ pub fn revert_migrations(con: &mut Connection) -> Result<(), MigrationError> {
         .skip_while(|step| step.version > version)
     {
         if let Err(e) = migration.revert(con) {
-            return Err(MigrationError {
+            return Err(MigrationErrorInner {
                 version: migration.version,
                 error: None,
                 revert_error: Some(e),
-            });
+            }
+            .into());
         }
     }
     Ok(())

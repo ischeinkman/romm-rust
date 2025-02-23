@@ -13,21 +13,19 @@ pub struct SaveMetaDatabase {
 }
 
 impl SaveMetaDatabase {
-    #[expect(unused)]
     pub fn open(path: &Path) -> Result<Self, MigrationError> {
         let mut con = Connection::open(path).map_err(MigrationError::from_raw)?;
         apply_migrations(&mut con)?;
         Ok(Self { con })
     }
 
-    #[expect(unused)]
+    #[cfg_attr(not(test), expect(unused))]
     fn new_in_memory() -> Result<Self, MigrationError> {
         let mut con = Connection::open_in_memory().map_err(MigrationError::from_raw)?;
         apply_migrations(&mut con)?;
         Ok(Self { con })
     }
 
-    #[expect(unused)]
     pub fn query_metadata(
         &self,
         rom: &str,
@@ -81,7 +79,6 @@ impl SaveMetaDatabase {
         Ok(ret)
     }
 
-    #[expect(unused)]
     pub fn upsert_metadata(&self, metadata: &SaveMeta) -> Result<(), DatabaseError> {
         const QUERY: &str = r#"
 INSERT INTO saves(

@@ -42,10 +42,7 @@ impl RawClient {
             .default_headers(default_headers)
             .build()
             .unwrap();
-        Self {
-            client,
-            url_base,
-        }
+        Self { client, url_base }
     }
 
     pub async fn raw_put(
@@ -96,10 +93,7 @@ impl RawClient {
             endpoint.trim_matches('/')
         );
         trace!("Calling POST (with form) on ROMM url {n}");
-        let req = self
-            .client
-            .post(n.as_str())
-            .multipart(body.into());
+        let req = self.client.post(n.as_str()).multipart(body.into());
         req.send().await?.error_for_status()
     }
 
@@ -110,11 +104,7 @@ impl RawClient {
             endpoint.trim_matches('/')
         );
         trace!("Calling GET on ROMM url {n}");
-        self.client
-            .get(n.as_str())
-            .send()
-            .await?
-            .error_for_status()
+        self.client.get(n.as_str()).send().await?.error_for_status()
     }
     pub async fn get<T: DeserializeOwned>(&self, endpoint: &str) -> Result<T, RommError> {
         let data = self.raw_get(endpoint).await?.text().await?;
@@ -264,16 +254,7 @@ impl RommClient {
             save.meta.name == meta.name
         });
         let Some(found) = filtered.next() else {
-            return Ok(RommSaveMeta {
-                rom_id: self.rom_id(&meta.rom).await?,
-                save_id: None,
-                download_path: None,
-                meta: SaveMeta::new_empty(
-                    meta.rom.clone(),
-                    meta.name.clone(),
-                    meta.emulator.clone(),
-                ),
-            });
+            return Ok(RommSaveMeta::new_save(self.rom_id(&meta.rom).await?, meta));
         };
         if filtered.next().is_some() {
             return Err(RommError::TooManySaves {
@@ -363,7 +344,12 @@ impl RommSaveMeta {
             meta,
         }
     }
-    pub fn new_save(rom_id: i64, meta: SaveMeta) -> Self {
+    pub fn new_save(rom_id: i64, base_meta: &SaveMeta) -> Self {
+        let meta = SaveMeta::new_empty(
+            base_meta.rom.clone(),
+            base_meta.name.clone(),
+            base_meta.emulator.clone(),
+        );
         Self::from_data(rom_id, None, None, meta)
     }
 }

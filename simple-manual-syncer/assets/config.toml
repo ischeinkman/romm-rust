@@ -4,8 +4,12 @@
 # * $ROM 
 # * $EXT (not actually used)
 
-saves = "/media/ilan/9581-B0A5/Saves/CurrentProfile/saves/$EMULATOR/$ROM.$EXT"
+saves = [
+    "/media/ilan/9581-B0A5/Saves/CurrentProfile/saves/$EMULATOR/$ROM.$EXT",
+    "/home/ilan/mediafs/media/rom-saves-manual/cart_savedata_backup",
+]
 skip_hidden = true 
+database = "syncdb.sqlite"
 
 [romm]
 #url = ""

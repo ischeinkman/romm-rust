@@ -1,8 +1,8 @@
-use std::{env, fmt::Debug};
 use std::fs::File;
 use std::hash::Hash;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::{env, fmt::Debug};
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
@@ -26,9 +26,12 @@ pub struct RommConfig {
 impl Debug for RommConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RommConfig")
-        .field("url", &self.url)
-        .field("api_key", &self.api_key.as_deref().map(|s| "*".repeat(s.len())))
-        .finish()
+            .field("url", &self.url)
+            .field(
+                "api_key",
+                &self.api_key.as_deref().map(|s| "*".repeat(s.len())),
+            )
+            .finish()
     }
 }
 
@@ -60,8 +63,12 @@ impl RommConfig {
         Ok(Self { url, api_key })
     }
     pub fn validate(&self) -> Result<(), ConfigError> {
-        self.url.as_ref().ok_or(ConfigError::MissingField("romm.url"))?;
-        self.api_key.as_ref().ok_or(ConfigError::MissingField("romm.api_key"))?;
+        self.url
+            .as_ref()
+            .ok_or(ConfigError::MissingField("romm.url"))?;
+        self.api_key
+            .as_ref()
+            .ok_or(ConfigError::MissingField("romm.api_key"))?;
         Ok(())
     }
 }
@@ -82,7 +89,7 @@ pub struct SystemConfig {
     pub saves: FlattenedList<String>,
     #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub skip_hidden: bool,
-    pub database : Option<PathBuf>, 
+    pub database: Option<PathBuf>,
 }
 
 impl SystemConfig {
@@ -90,7 +97,7 @@ impl SystemConfig {
         Self {
             saves: self.saves.join(other.saves),
             skip_hidden: self.skip_hidden || other.skip_hidden,
-            database : other.database.or(self.database),
+            database: other.database.or(self.database),
         }
     }
     pub fn validate(&self) -> Result<(), ConfigError> {

@@ -7,7 +7,7 @@ use futures::pin_mut;
 use futures::{Stream, TryStream, TryStreamExt};
 use thiserror::Error;
 use tokio::fs::{self, File};
-use tokio::io::{AsyncWrite, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 
 pub fn async_walkdir(root: &Path) -> impl TryStream<Ok = PathBuf, Error = io::Error> {
     futures::stream::unfold(vec![Ok(root.to_path_buf())], |mut queue| async move {

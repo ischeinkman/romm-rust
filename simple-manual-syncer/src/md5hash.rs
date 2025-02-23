@@ -13,7 +13,7 @@ impl Md5Hash {
     pub const fn from_raw(raw: [u8; Self::LENGTH]) -> Self {
         Self(raw)
     }
-    pub const fn as_bytes(&self) -> [u8 ; Self::LENGTH] {
+    pub const fn as_bytes(&self) -> [u8; Self::LENGTH] {
         self.0
     }
 }
