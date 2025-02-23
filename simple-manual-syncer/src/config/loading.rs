@@ -12,6 +12,9 @@ pub enum FlattenedList<T> {
 }
 
 impl<T> FlattenedList<T> {
+    pub fn is_empty(&self) -> bool {
+        self.as_slice().is_empty()
+    }
     pub fn as_slice(&self) -> &[T] {
         match self {
             FlattenedList::None => &[],

@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, fmt::Debug};
 use std::fs::File;
 use std::hash::Hash;
 use std::io::Read;
@@ -13,10 +13,30 @@ use loading::FlattenedList;
 pub mod save_finding;
 pub mod save_formats;
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct RommConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<Url>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
+}
+
+impl Debug for RommConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RommConfig")
+        .field("url", &self.url)
+        .field("api_key", &self.api_key.as_deref().map(|s| "*".repeat(s.len())))
+        .finish()
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn is_true(b: &bool) -> bool {
+    *b
 }
 
 impl RommConfig {
@@ -50,19 +70,25 @@ impl RommConfig {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SystemConfig {
+    #[serde(default, skip_serializing_if = "FlattenedList::is_empty")]
     pub saves: FlattenedList<String>,
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    pub skip_hidden: bool,
 }
 
 impl SystemConfig {
     pub fn join(self, other: Self) -> Self {
         Self {
             saves: self.saves.join(other.saves),
+            skip_hidden: self.skip_hidden || other.skip_hidden,
         }
     }
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
     pub system: SystemConfig,
     pub romm: RommConfig,

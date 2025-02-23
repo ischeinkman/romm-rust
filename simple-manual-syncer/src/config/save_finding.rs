@@ -1,8 +1,8 @@
 use std::io;
 use std::path::PathBuf;
 
-use futures::{StreamExt, TryStream, TryStreamExt};
-use tracing::{debug, error, warn};
+use futures::{future, stream, FutureExt, StreamExt, TryFutureExt, TryStream, TryStreamExt};
+use tracing::{debug, error, trace, warn};
 
 use crate::utils::async_walkdir;
 
@@ -10,19 +10,37 @@ use super::save_formats::{format_root, path_matches};
 use super::Config;
 
 pub fn possible_saves(config: &Config) -> impl TryStream<Ok = PathBuf, Error = io::Error> + '_ {
-    futures::stream::iter(save_roots(config))
+    let skip_hidden = config.system.skip_hidden;
+    let full_tree = stream::iter(save_roots(config))
         .map(io::Result::Ok)
         .map_ok(|root| async_walkdir(&root))
-        .try_flatten()
-        .try_filter(move |path| {
-            let has_matching_format = config
+        .try_flatten();
+
+    let no_hidden = full_tree.try_filter(move |pt| {
+        trace!("HIDDEN CHECK: {pt:?}");
+        let is_hidden = pt
+            .file_stem()
+            .map(|raw| raw.to_string_lossy().starts_with('.'))
+            .unwrap_or(false);
+        trace!("HIDDEN RES: {pt:?} => {is_hidden:?}");
+        future::ready(!skip_hidden || !is_hidden)
+    });
+
+    let matching_paths = no_hidden.try_filter(move |path| {
+        future::ready(
+            config
                 .system
                 .saves
                 .as_slice()
                 .iter()
-                .any(|fmt| path_matches(fmt, path));
-            futures::future::ready(has_matching_format)
-        })
+                .any(|fmt| path_matches(fmt, path)),
+        )
+    });
+    matching_paths.try_filter(|path| {
+        tokio::fs::metadata(path.to_path_buf())
+            .map_ok(|meta| meta.is_file())
+            .map(|res| res.unwrap_or(true))
+    })
 }
 
 fn save_roots(config: &Config) -> impl Iterator<Item = PathBuf> + '_ {

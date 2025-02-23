@@ -5,6 +5,7 @@
 # * $EXT (not actually used)
 
 saves = "/media/ilan/9581-B0A5/Saves/CurrentProfile/saves/$EMULATOR/$ROM.$EXT"
+skip_hidden = true 
 
 [romm]
 #url = ""
