@@ -2,10 +2,11 @@ use std::{env, fmt::Debug};
 use std::fs::File;
 use std::hash::Hash;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 use url::Url;
 
 mod loading;
@@ -58,6 +59,11 @@ impl RommConfig {
             .context("Error parsing api key from ROMM_API_KEY")?;
         Ok(Self { url, api_key })
     }
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        self.url.as_ref().ok_or(ConfigError::MissingField("romm.url"))?;
+        self.api_key.as_ref().ok_or(ConfigError::MissingField("romm.api_key"))?;
+        Ok(())
+    }
 }
 
 impl RommConfig {
@@ -76,6 +82,7 @@ pub struct SystemConfig {
     pub saves: FlattenedList<String>,
     #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub skip_hidden: bool,
+    pub database : Option<PathBuf>, 
 }
 
 impl SystemConfig {
@@ -83,7 +90,17 @@ impl SystemConfig {
         Self {
             saves: self.saves.join(other.saves),
             skip_hidden: self.skip_hidden || other.skip_hidden,
+            database : other.database.or(self.database),
         }
+    }
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        if self.saves.is_empty() {
+            return Err(ConfigError::MissingField("system.saves"));
+        }
+        if self.database.is_none() {
+            return Err(ConfigError::MissingField("system.database"));
+        }
+        Ok(())
     }
 }
 
@@ -131,6 +148,18 @@ impl Config {
         }
         let romm_env_config = RommConfig::from_env()?;
         retvl.romm = retvl.romm.join(romm_env_config);
+        retvl.validate()?;
         Ok(retvl)
     }
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        self.romm.validate()?;
+        self.system.validate()?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum ConfigError {
+    #[error("Missing required field {0}")]
+    MissingField(&'static str),
 }

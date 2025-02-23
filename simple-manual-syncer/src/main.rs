@@ -2,6 +2,7 @@ use std::env;
 
 use chrono::{DateTime, Utc};
 use config::Config;
+use database::SaveMetaDatabase;
 use futures::TryStreamExt;
 use tracing::{info, level_filters::LevelFilter, warn};
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
@@ -58,6 +59,7 @@ fn init_logger() {
 async fn async_main() {
     let args = std::env::args().collect::<Vec<_>>();
     let cfg = Config::load(args.into_iter().skip(1)).unwrap();
+    let db = SaveMetaDatabase::open(cfg.system.database.as_deref().unwrap()).unwrap();
     info!("Starting with config: {cfg:?}");
     let cl = RommClient::new(
         cfg.romm.url.clone().unwrap(),
@@ -67,12 +69,16 @@ async fn async_main() {
     config::save_finding::possible_saves(&cfg)
         .try_for_each(|save| {
             let cl = &cl;
+            let db = &db;
             async move {
                 let device_meta = DeviceMeta::from_path(save.as_ref()).await.unwrap();
                 let romm_meta = match cl.find_save_matching(&device_meta.meta).await {
-                    Ok(data) => data, 
+                    Ok(data) => data,
                     Err(RommError::RomNotFound(_)) => {
-                        warn!("Missing rom in remote for local file {}", device_meta.meta.rom);
+                        warn!(
+                            "Missing rom in remote for local file {}",
+                            device_meta.meta.rom
+                        );
                         return Ok(());
                     }
                     Err(other) => {
@@ -80,19 +86,30 @@ async fn async_main() {
                     }
                 };
 
-                let action =
-                    decide_action(&device_meta.meta, &romm_meta.meta, &device_meta.meta).unwrap();
-                info!("{:?} ({:?}, {:?}) => {:?}", device_meta.path, romm_meta.rom_id, romm_meta.save_id, action);
-                match action {
-                    SyncDecision::Noop => {}
+                let db_data = db
+                    .query_metadata(
+                        &device_meta.meta.rom,
+                        &device_meta.meta.name,
+                        device_meta.meta.emulator.as_deref(),
+                    )
+                    .unwrap();
+                let action = decide_action(&device_meta.meta, &romm_meta.meta, &db_data).unwrap();
+                info!(
+                    "{:?} ({:?}, {:?}) => {:?}",
+                    device_meta.path, romm_meta.rom_id, romm_meta.save_id, action
+                );
+                let new_meta = match action {
+                    SyncDecision::Noop => device_meta.meta,
                     SyncDecision::PullToDevice => {
-                        //cl.pull_save(&device_meta.path, &romm_meta).await.unwrap();
-                        info!("WOULD PULL {:?} => {:?}", romm_meta, device_meta.path);
+                        cl.pull_save(&device_meta.path, &romm_meta).await.unwrap();
+                        romm_meta.meta
                     }
                     SyncDecision::PushToRemote => {
                         cl.push_save(&device_meta.path, &romm_meta).await.unwrap();
+                        device_meta.meta
                     }
-                }
+                };
+                db.upsert_metadata(&new_meta).unwrap();
                 Ok(())
             }
         })
