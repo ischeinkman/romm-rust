@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use futures::stream;
 use futures::stream::FuturesUnordered;
 use futures::stream::TryStreamExt;
 use reqwest::Client as HttpClient;
@@ -6,16 +6,16 @@ use reqwest::Error as HttpError;
 use reqwest::{Body, ClientBuilder, Response};
 use romm_api::{DetailedRomSchema, RomSchema, SaveSchema};
 use serde::de::DeserializeOwned;
+use std::io;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
-use std::{collections::HashMap, path::Path, sync::RwLock, time::SystemTime};
-use tokio::{
-    fs::{self, File},
-    io::AsyncWriteExt,
-};
+use std::{collections::HashMap, path::Path, sync::RwLock};
+use thiserror::Error;
+use tokio::fs::File;
 use tracing::{debug, trace};
 use url::Url;
 
+use crate::utils::download;
 use crate::{
     md5hash::{md5_stream, Md5Hash},
     SaveMeta,
@@ -90,7 +90,7 @@ impl RawClient {
             .await?
             .error_for_status()
     }
-    pub async fn get<T: DeserializeOwned>(&self, endpoint: &str) -> Result<T, anyhow::Error> {
+    pub async fn get<T: DeserializeOwned>(&self, endpoint: &str) -> Result<T, RommError> {
         let data = self.raw_get(endpoint).await?.text().await?;
         serde_json::from_str(&data).map_err(From::from)
     }
@@ -110,7 +110,7 @@ impl RommClient {
 
     #[expect(unused)]
     #[tracing::instrument(skip(self))]
-    pub async fn push_save(&self, save: &Path, meta: &RommSaveMeta) -> Result<(), anyhow::Error> {
+    pub async fn push_save(&self, save: &Path, meta: &RommSaveMeta) -> Result<(), RommError> {
         let mut fh = File::open(save).await?;
         if let Some(prev) = meta.save_id {
             let ep = format!("/api/saves/{prev}");
@@ -128,23 +128,24 @@ impl RommClient {
     }
     #[tracing::instrument(skip(self))]
     pub async fn pull_save(&self, save: &Path, meta: &RommSaveMeta) -> Result<(), anyhow::Error> {
-        let tmp_fname = save.with_extension(timestamp_now().to_rfc3339());
-        let mut fh = File::create_new(&tmp_fname).await?;
         let ep = meta
             .download_path
             .as_deref()
             .ok_or_else(|| anyhow::anyhow!("Download path not found."))?;
-        let mut resp = self.raw.raw_get(ep).await?;
-        while let Some(chunk) = resp.chunk().await? {
-            fh.write_all(&chunk).await?;
-        }
-        fh.flush().await?;
-        drop(fh);
-        fs::rename(tmp_fname, save).await?;
+
+        let dl_stream =
+            stream::try_unfold(self.raw.raw_get(ep).await?, move |mut resp| async move {
+                match resp.chunk().await {
+                    Err(e) => Err(e),
+                    Ok(None) => Ok(None),
+                    Ok(Some(chunk)) => Ok(Some((chunk, resp))),
+                }
+            });
+        download(dl_stream, save).await?;
         Ok(())
     }
     #[tracing::instrument(skip(self))]
-    async fn rom_id(&self, rom: &str) -> Result<i64, anyhow::Error> {
+    async fn rom_id(&self, rom: &str) -> Result<i64, RommError> {
         trace!("Resolving ROMM id for rom {rom}.");
         if let Some(id) = self
             .rom_id_cache
@@ -158,7 +159,7 @@ impl RommClient {
         Ok(self.rom_schema(rom).await?.id)
     }
     #[tracing::instrument(skip(self))]
-    async fn rom_schema(&self, rom: &str) -> Result<RomSchema, anyhow::Error> {
+    async fn rom_schema(&self, rom: &str) -> Result<RomSchema, RommError> {
         let encoded = url::form_urlencoded::byte_serialize(rom.as_bytes()).fold(
             String::new(),
             |mut acc, cur| {
@@ -173,11 +174,12 @@ impl RommClient {
         let found = match all_found.len() {
             0 | 1 => all_found
                 .pop()
-                .ok_or_else(|| anyhow::anyhow!("No romm entry found for rom {rom}"))?,
+                .ok_or_else(|| RommError::RomNotFound(rom.to_owned()))?,
             other => {
-                return Err(anyhow::anyhow!(
-                    "Found {other} roms for file {rom}: {all_found:?}"
-                ));
+                return Err(RommError::TooManyRoms {
+                    rom: rom.to_owned(),
+                    count: other,
+                });
             }
         };
         self.rom_id_cache
@@ -188,7 +190,7 @@ impl RommClient {
     }
 
     #[tracing::instrument(skip(self))]
-    async fn saves_for_rom(&self, rom: &str) -> Result<Vec<RommSaveMeta>, anyhow::Error> {
+    async fn saves_for_rom(&self, rom: &str) -> Result<Vec<RommSaveMeta>, RommError> {
         let detailed_schema = self
             .raw
             .get::<DetailedRomSchema>(&format!("/api/roms/{}", self.rom_id(rom).await?))
@@ -199,7 +201,7 @@ impl RommClient {
     }
 
     #[tracing::instrument(skip(self))]
-    pub async fn find_save_matching(&self, meta: &SaveMeta) -> Result<RommSaveMeta, anyhow::Error> {
+    pub async fn find_save_matching(&self, meta: &SaveMeta) -> Result<RommSaveMeta, RommError> {
         debug!("Looking for saves matching given metadata.");
         let all_possible = self.saves_for_rom(&meta.rom).await?;
         debug!("Found {} possible saves.", all_possible.len());
@@ -228,7 +230,10 @@ impl RommClient {
             });
         };
         if filtered.next().is_some() {
-            return Err(anyhow::anyhow!("Found multiple matching criteria."));
+            return Err(RommError::TooManySaves {
+                meta: meta.clone(),
+                count: filtered.count() + 2,
+            });
         }
         Ok(found)
     }
@@ -317,10 +322,18 @@ impl RommSaveMeta {
     }
 }
 
-fn timestamp_now() -> DateTime<Utc> {
-    let dt = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos() as _;
-    DateTime::from_timestamp_nanos(dt)
+#[derive(Debug, Error)]
+pub enum RommError {
+    #[error("No rom found with name {0}")]
+    RomNotFound(String),
+    #[error("Found {count} possible roms matching term {rom}")]
+    TooManyRoms { rom: String, count: usize },
+    #[error("Found {count} possible saves matching filter {meta:?}")]
+    TooManySaves { meta: SaveMeta, count: usize },
+    #[error(transparent)]
+    JsonParser(#[from] serde_json::Error),
+    #[error(transparent)]
+    Io(#[from] io::Error),
+    #[error(transparent)]
+    Http(#[from] HttpError),
 }

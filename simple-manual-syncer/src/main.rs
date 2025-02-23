@@ -3,14 +3,14 @@ use std::env;
 use chrono::{DateTime, Utc};
 use config::Config;
 use futures::TryStreamExt;
-use tracing::level_filters::LevelFilter;
+use tracing::{info, level_filters::LevelFilter, warn};
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
 
 mod database;
 mod md5hash;
 use md5hash::{md5, Md5Hash};
 mod rommclient;
-use rommclient::RommClient;
+use rommclient::{RommClient, RommError};
 mod deviceclient;
 use deviceclient::DeviceMeta;
 mod config;
@@ -58,6 +58,7 @@ fn init_logger() {
 async fn async_main() {
     let args = std::env::args().collect::<Vec<_>>();
     let cfg = Config::load(args.into_iter().skip(1)).unwrap();
+    info!("Starting with config: {cfg:?}");
     let cl = RommClient::new(
         cfg.romm.url.clone().unwrap(),
         cfg.romm.api_key.clone().unwrap(),
@@ -68,7 +69,16 @@ async fn async_main() {
             let cl = &cl;
             async move {
                 let device_meta = DeviceMeta::from_path(save.as_ref()).await.unwrap();
-                let romm_meta = cl.find_save_matching(&device_meta.meta).await.unwrap();
+                let romm_meta = match cl.find_save_matching(&device_meta.meta).await {
+                    Ok(data) => data, 
+                    Err(RommError::RomNotFound(_)) => {
+                        warn!("Missing rom in remote for local file {}", device_meta.meta.rom);
+                        return Ok(());
+                    }
+                    Err(other) => {
+                        panic!("Error finding save: {other:?}");
+                    }
+                };
 
                 let action =
                     decide_action(&device_meta.meta, &romm_meta.meta, &device_meta.meta).unwrap();
