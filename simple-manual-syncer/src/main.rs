@@ -55,11 +55,9 @@ async fn async_main() {
     let auth = format!("Basic {}", std::env::var("ROMM_API_TOKEN").unwrap());
     let cl = RommClient::new(url, auth);
     let args = std::env::args().collect::<Vec<_>>();
-    let rom = &args[1];
-    let save = &args[2];
+    let save = &args[1];
 
-    let rom_name = Path::new(rom).file_name().unwrap().to_str().unwrap();
-    let device_meta = DeviceMeta::from_path(rom_name.to_owned(), save.as_ref())
+    let device_meta = DeviceMeta::from_path( save.as_ref())
         .await
         .unwrap();
     let romm_meta = cl.find_save_matching(&device_meta.meta).await.unwrap();
