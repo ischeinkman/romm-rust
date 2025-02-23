@@ -15,6 +15,16 @@ pub struct MigrationError {
     pub revert_error: Option<rusqlite::Error>,
 }
 
+impl MigrationError {
+    pub fn from_raw(raw: rusqlite::Error) -> Self {
+        Self {
+            version: 0,
+            error: Some(raw),
+            revert_error: None,
+        }
+    }
+}
+
 pub fn apply_migrations(con: &mut Connection) -> Result<(), MigrationError> {
     let version = database_version(con).map_err(|e| MigrationError {
         version: 0,
