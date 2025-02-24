@@ -4,7 +4,7 @@ pub struct SaveSchema {
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub download_path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub emulator: Option<String>, 
+    pub emulator: Option<String>,
     pub file_extension: String,
     pub file_name: String,
     pub file_name_no_ext: String,
