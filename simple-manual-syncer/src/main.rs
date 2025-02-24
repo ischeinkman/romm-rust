@@ -1,6 +1,5 @@
 use std::env;
 
-use chrono::{DateTime, Utc};
 use config::Config;
 use database::SaveMetaDatabase;
 use futures::TryStreamExt;
@@ -9,14 +8,15 @@ use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
 
 mod database;
 mod md5hash;
-use md5hash::{md5, Md5Hash};
 mod rommclient;
 use rommclient::{RommClient, RommError};
 mod deviceclient;
 use deviceclient::DeviceMeta;
 mod config;
+mod model;
 mod path_format_strings;
 mod utils;
+use model::SaveMeta;
 
 fn main() {
     init_logger();
@@ -68,11 +68,12 @@ async fn async_main() {
     );
 
     config::save_finding::possible_saves(&cfg)
-        .try_for_each(|save| {
+        .try_for_each(|(save, vars)| {
             let cl = &cl;
             let db = &db;
             async move {
-                let device_meta = DeviceMeta::from_path(save.as_ref()).await.unwrap();
+                let mut device_meta = DeviceMeta::from_path(save.as_ref()).await.unwrap();
+                device_meta.meta.apply_format_variables(vars).unwrap();
                 let romm_meta = match cl.find_save_matching(&device_meta.meta).await {
                     Ok(data) => data,
                     Err(RommError::RomNotFound(_)) => {
@@ -116,39 +117,6 @@ async fn async_main() {
         })
         .await
         .unwrap();
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct SaveMeta {
-    pub rom: String,
-    pub name: String,
-    pub emulator: Option<String>,
-    pub created: DateTime<Utc>,
-    pub updated: DateTime<Utc>,
-    pub hash: Md5Hash,
-    pub size: u64,
-}
-impl SaveMeta {
-    pub fn timestamp(&self) -> DateTime<Utc> {
-        self.created.max(self.updated)
-    }
-    pub fn new_empty(rom: String, name: String, emulator: Option<String>) -> Self {
-        let hash = md5(std::io::Cursor::new([])).unwrap();
-        let created = DateTime::from_timestamp_nanos(0);
-        let updated = DateTime::from_timestamp_nanos(0);
-        Self {
-            rom,
-            name,
-            emulator,
-            created,
-            updated,
-            hash,
-            size: 0,
-        }
-    }
-    pub fn is_empty(&self) -> bool {
-        self.size == 0
-    }
 }
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]

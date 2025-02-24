@@ -1,14 +1,16 @@
-use std::io;
 use std::path::PathBuf;
+use std::{collections::HashMap, io};
 
 use futures::{future, stream, FutureExt, StreamExt, TryFutureExt, TryStream, TryStreamExt};
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, warn};
 
 use crate::utils::async_walkdir;
 
 use super::Config;
 
-pub fn possible_saves(config: &Config) -> impl TryStream<Ok = PathBuf, Error = io::Error> + '_ {
+pub fn possible_saves(
+    config: &Config,
+) -> impl TryStream<Ok = (PathBuf, HashMap<String, String>), Error = io::Error> + '_ {
     let skip_hidden = config.system.skip_hidden;
     let full_tree = stream::iter(save_roots(config))
         .map(io::Result::Ok)
@@ -16,26 +18,33 @@ pub fn possible_saves(config: &Config) -> impl TryStream<Ok = PathBuf, Error = i
         .try_flatten();
 
     let no_hidden = full_tree.try_filter(move |pt| {
-        trace!("HIDDEN CHECK: {pt:?}");
         let is_hidden = pt
             .file_stem()
             .map(|raw| raw.to_string_lossy().starts_with('.'))
             .unwrap_or(false);
-        trace!("HIDDEN RES: {pt:?} => {is_hidden:?}");
         future::ready(!skip_hidden || !is_hidden)
     });
 
-    let matching_paths = no_hidden.try_filter(move |path| {
-        future::ready(
-            config
-                .system
-                .saves
-                .as_slice()
-                .iter()
-                .any(|fmt| fmt.matches_path(path)),
-        )
+    let matching_paths = no_hidden.try_filter_map(move |path| {
+        let mut variables = HashMap::new();
+        let mut matches_fmt = false;
+        for saves in config.system.saves.as_slice().iter() {
+            let Ok(cur) = saves.resolve(&path) else {
+                continue;
+            };
+            matches_fmt = true;
+            if cur.len() > variables.len() {
+                variables = cur;
+            }
+        }
+        let res = if matches_fmt {
+            Some((path, variables))
+        } else {
+            None
+        };
+        future::ready(Ok(res))
     });
-    matching_paths.try_filter(|path| {
+    matching_paths.try_filter(|(path, _)| {
         tokio::fs::metadata(path.to_path_buf())
             .map_ok(|meta| meta.is_file())
             .map(|res| res.unwrap_or(true))
