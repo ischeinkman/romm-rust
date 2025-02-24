@@ -15,6 +15,7 @@ use rommclient::{RommClient, RommError};
 mod deviceclient;
 use deviceclient::DeviceMeta;
 mod config;
+mod path_format_strings;
 mod utils;
 
 fn main() {

@@ -6,7 +6,6 @@ use tracing::{debug, error, trace, warn};
 
 use crate::utils::async_walkdir;
 
-use super::save_formats::{format_root, path_matches};
 use super::Config;
 
 pub fn possible_saves(config: &Config) -> impl TryStream<Ok = PathBuf, Error = io::Error> + '_ {
@@ -33,7 +32,7 @@ pub fn possible_saves(config: &Config) -> impl TryStream<Ok = PathBuf, Error = i
                 .saves
                 .as_slice()
                 .iter()
-                .any(|fmt| path_matches(fmt, path)),
+                .any(|fmt| fmt.matches_path(path)),
         )
     });
     matching_paths.try_filter(|path| {
@@ -45,7 +44,7 @@ pub fn possible_saves(config: &Config) -> impl TryStream<Ok = PathBuf, Error = i
 
 fn save_roots(config: &Config) -> impl Iterator<Item = PathBuf> + '_ {
     let all_fmts = config.system.saves.as_slice().iter();
-    let possible = all_fmts.map(|s| format_root(s)).map(PathBuf::from);
+    let possible = all_fmts.map(|s| s.prefix()).map(PathBuf::from);
     possible.filter(
         |pt| match std::fs::symlink_metadata(pt).map(|meta| meta.is_dir()) {
             Ok(true) => true,

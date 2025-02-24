@@ -11,8 +11,9 @@ use url::Url;
 
 mod loading;
 use loading::FlattenedList;
+
+use crate::path_format_strings::FormatString;
 pub mod save_finding;
-pub mod save_formats;
 
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
@@ -86,7 +87,7 @@ impl RommConfig {
 #[serde(deny_unknown_fields)]
 pub struct SystemConfig {
     #[serde(default, skip_serializing_if = "FlattenedList::is_empty")]
-    pub saves: FlattenedList<String>,
+    pub saves: FlattenedList<FormatString>,
     #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub skip_hidden: bool,
     pub database: Option<PathBuf>,
