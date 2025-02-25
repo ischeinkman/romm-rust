@@ -9,19 +9,33 @@ use crate::{
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SaveMeta {
+    /// The name of the rom; if unset defaults to `name`.
     pub rom: Option<String>,
+    /// The name of the save file itself, without any extension or folder
+    /// prefix.
     pub name: String,
+    /// The file extention of the same.
     pub ext: String,
+    /// The emulator of the save file, if known.
     pub emulator: Option<String>,
+    /// The time the save file was created, defaulting to the unix epoch if
+    /// unknown.
     pub created: DateTime<Utc>,
+    /// The time the save file was last modified, defaulting to the unix epoch
+    /// if unknown.
     pub updated: DateTime<Utc>,
+    /// The hash value of the save, for checking for equality.
     pub hash: Md5Hash,
+    /// The size of the save, for checking for equality.
     pub size: u64,
 }
 impl SaveMeta {
+    /// The name of the ROM this save is for.
     pub fn rom(&self) -> &str {
         self.rom.as_deref().unwrap_or(&self.name)
     }
+    /// Where the save file should be placed given the current metadata
+    /// variables and the given format string template.
     pub fn output_target(&self, format: &FormatString) -> String {
         let mut vars = HashMap::new();
         if let Some(rom) = self.rom.as_deref() {
@@ -45,6 +59,8 @@ impl SaveMeta {
         }
         retvl
     }
+    /// Applies values extracted from a format string template to this save
+    /// metadata.
     pub fn apply_format_variables(
         &mut self,
         mut variables: HashMap<String, String>,
@@ -79,9 +95,14 @@ impl SaveMeta {
             .unwrap_or(self.updated);
         Ok(())
     }
+
+    /// The effective timestamp of this save file.
     pub fn timestamp(&self) -> DateTime<Utc> {
         self.created.max(self.updated)
     }
+
+    /// Builds a new sentinel [`SaveMeta`] instance to represent a save file
+    /// that doesn't exist yet.
     pub fn new_empty(rom: String, name: String, ext: String, emulator: Option<String>) -> Self {
         let hash = md5(std::io::Cursor::new([])).unwrap();
         let created = DateTime::from_timestamp_nanos(0);
@@ -97,6 +118,9 @@ impl SaveMeta {
             size: 0,
         }
     }
+
+    /// Checks whether or not this [SaveMeta] represents a non-existent save
+    /// file.
     pub fn is_empty(&self) -> bool {
         self.size == 0
     }

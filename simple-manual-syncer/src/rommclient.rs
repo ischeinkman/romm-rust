@@ -26,6 +26,7 @@ use crate::{
     SaveMeta,
 };
 
+/// Wrapper struct for making raw requests to the ROMM instance.
 pub struct RawClient {
     client: HttpClient,
     url_base: Url,
@@ -76,6 +77,7 @@ impl RawClient {
 
 pub struct RommClient {
     raw: RawClient,
+    /// Cache of rom name to ROMM ID for quick lookup.
     rom_id_cache: RwLock<HashMap<String, i64>>,
 }
 
@@ -195,6 +197,15 @@ impl RommClient {
             .map_err(From::from)
     }
 
+    /// Finds a save in the ROMM database matching the given [`SaveMeta`] record and [`FormatString`].
+    ///
+    /// If multiple are found, returns the latest.
+    ///
+    /// # Errors
+    /// * No rom matched the [`SaveMeta`] record's rom string.
+    /// * More than 1 rom matched the [`SaveMeta`] record's rom string.
+    /// * Multiple saves match the latest timestamp.
+    /// * There was an error communicated with the remote ROMM server.
     #[tracing::instrument(skip(self))]
     pub async fn find_save_matching(
         &self,

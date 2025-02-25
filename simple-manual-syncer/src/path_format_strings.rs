@@ -40,6 +40,22 @@ impl<'a> From<&'a str> for FormatString {
 }
 
 impl FormatString {
+    /// Produces a new output string from the given [`FormatString`] and
+    /// variable substitution map.
+    ///
+    /// Missing variables aren't substituted and extra variables are ignored.
+    ///
+    /// # Examples
+    /// ```rust
+    /// let fmt : FormatString = "$PREFIX-postpre-$MIDDLE-prepost-$SUFFIX.$EXT";
+    /// let mut vars = HashMap::new();
+    /// vars.insert("$PREFIX", "a");
+    /// vars.insert("$MIDDLE", "b");
+    /// vars.insert("$SUFFIX", "c");
+    /// vars.insert("$UNUSED", "d");
+    /// let output = fmt.build_with_vars(&vars);
+    /// assert_eq!(output.as_str(), "a-postpre-b-prepost-c.$EXT");
+    /// ```
     pub fn build_with_vars<K, V>(&self, vars: &HashMap<K, V>) -> String
     where
         K: Borrow<str> + Eq + Hash,
@@ -56,9 +72,35 @@ impl FormatString {
         }
         retvl
     }
+
+    /// The string representing the last filesystem folder in this
+    /// [`FormatString`] without any variables.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let formats : &[FormatString] = &["/my/long/prefix/var-$SUFFIX", "/my/long/prefix/$PREFIX-var", "/my/long/prefix/$EMBEDDED/subdir"];
+    /// for fmt in formats {
+    ///     assert_eq!(fmt.prefix(), "/my/long/prefix/");
+    /// }
+    /// assert_eq!(FormatString::from("my-file-path.txt").prefix(), "my-file-path.txt");
+    /// ```
     pub fn prefix(&self) -> &str {
-        split_variable_portions(&self.0).next().unwrap_or("/")
+        let mut itr = split_variable_portions(&self.0);
+        let Some(head) = itr.next() else { return "/" };
+        if itr.next().is_none() {
+            return head;
+        }
+        if head.ends_with('/') {
+            return head;
+        }
+        match head.rsplit_once('/') {
+            Some((ret_without_slash, _)) => &self.0[..ret_without_slash.len() + 1],
+            None => "/",
+        }
     }
+
+    /// The list of variables in this format string.
     pub fn variables(&self) -> HashSet<&str> {
         split_variable_portions(&self.0)
             .filter(|s| s.starts_with("$"))
@@ -77,6 +119,16 @@ impl FormatString {
     pub fn matches_path(&self, path: &Path) -> bool {
         self.resolve(path).is_ok()
     }
+
+    /// Checks whether or not the given string matches this [`FormatString`].
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let format : FormatString = "/prefix/$EMULATOR/$ROM-$TIMESTAMP.$EXT".into();
+    /// assert!(format.matches("/prefix/my-emulator/my-rom-with-ts.sav"));
+    /// assert!(!format.matches("/prefix/my-emulator/my-rom-folder/my-rom-file.sav"));
+    /// ```
     pub fn matches(&self, s: &str) -> bool {
         self.matches_path(Path::new(s))
     }

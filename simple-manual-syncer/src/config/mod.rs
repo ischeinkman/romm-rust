@@ -15,13 +15,74 @@ use loading::FlattenedList;
 use crate::path_format_strings::FormatString;
 pub mod save_finding;
 
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Config {
+    /// Configuration for dealing with the local system.
+    pub system: SystemConfig,
+
+    /// Configuration for dealing with the remote ROMM server.
+    pub romm: RommConfig,
+}
+
+impl Config {
+    pub fn join(self, other: Self) -> Self {
+        Self {
+            system: self.system.join(other.system),
+            romm: self.romm.join(other.romm),
+        }
+    }
+    pub fn load(files: impl Iterator<Item = impl AsRef<Path>>) -> Result<Self, anyhow::Error> {
+        let mut retvl = Self::default();
+        for file in files {
+            let file = file.as_ref();
+            let mut fh =
+                File::open(file).with_context(|| format!("Error opening config file {file:?}."))?;
+            let ext = file.extension().map(|s| s.to_string_lossy());
+            let ext = ext.as_ref().map(|s| s.as_ref());
+            let parsed = match ext {
+                Some("toml") => {
+                    let mut data = String::new();
+                    fh.read_to_string(&mut data)
+                        .with_context(|| format!("Error reading data from TOML file {file:?}."))?;
+                    toml::from_str(&data)
+                        .with_context(|| format!("Error parsing TOML file {file:?}."))?
+                }
+                Some("json") => serde_json::from_reader(fh)
+                    .with_context(|| format!("Error parsing JSON file {file:?}."))?,
+                _ => {
+                    let mut data = String::new();
+                    fh.read_to_string(&mut data)
+                        .with_context(|| format!("Error reading data from TOML file {file:?}."))?;
+                    toml::from_str(&data)
+                        .with_context(|| format!("Error parsing TOML file {file:?}."))?
+                }
+            };
+            retvl = retvl.join(parsed);
+        }
+        let romm_env_config = RommConfig::from_env()?;
+        retvl.romm = retvl.romm.join(romm_env_config);
+        retvl.validate()?;
+        Ok(retvl)
+    }
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        self.romm.validate()?;
+        self.system.validate()?;
+        Ok(())
+    }
+}
+
+/// Configuration for dealing with the remote ROMM server.
 #[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct RommConfig {
+    /// The URL of the remote ROMM server.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<Url>,
+    /// The authorization header to use when making API calls.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
+    /// The format string used for reading & uploading file names to ROMM.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub format: Option<FormatString>,
 }
@@ -90,13 +151,19 @@ impl RommConfig {
     }
 }
 
+/// Configuration for dealing with the local system.
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SystemConfig {
+    /// The list of formatted strings denoting where in the filesystem to look
+    /// for save files.
     #[serde(default, skip_serializing_if = "FlattenedList::is_empty")]
     pub saves: FlattenedList<FormatString>,
+    /// Whether or not we should ignore hidden files; defaults to `true`.
     #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub skip_hidden: bool,
+    /// Where to put the local sync database, used for checking for modification
+    /// conflicts and keep a record of updates.
     pub database: Option<PathBuf>,
 }
 
@@ -115,60 +182,6 @@ impl SystemConfig {
         if self.database.is_none() {
             return Err(ConfigError::MissingField("system.database"));
         }
-        Ok(())
-    }
-}
-
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Config {
-    pub system: SystemConfig,
-    pub romm: RommConfig,
-}
-
-impl Config {
-    pub fn join(self, other: Self) -> Self {
-        Self {
-            system: self.system.join(other.system),
-            romm: self.romm.join(other.romm),
-        }
-    }
-    pub fn load(files: impl Iterator<Item = impl AsRef<Path>>) -> Result<Self, anyhow::Error> {
-        let mut retvl = Self::default();
-        for file in files {
-            let file = file.as_ref();
-            let mut fh =
-                File::open(file).with_context(|| format!("Error opening config file {file:?}."))?;
-            let ext = file.extension().map(|s| s.to_string_lossy());
-            let ext = ext.as_ref().map(|s| s.as_ref());
-            let parsed = match ext {
-                Some("toml") => {
-                    let mut data = String::new();
-                    fh.read_to_string(&mut data)
-                        .with_context(|| format!("Error reading data from TOML file {file:?}."))?;
-                    toml::from_str(&data)
-                        .with_context(|| format!("Error parsing TOML file {file:?}."))?
-                }
-                Some("json") => serde_json::from_reader(fh)
-                    .with_context(|| format!("Error parsing JSON file {file:?}."))?,
-                _ => {
-                    let mut data = String::new();
-                    fh.read_to_string(&mut data)
-                        .with_context(|| format!("Error reading data from TOML file {file:?}."))?;
-                    toml::from_str(&data)
-                        .with_context(|| format!("Error parsing TOML file {file:?}."))?
-                }
-            };
-            retvl = retvl.join(parsed);
-        }
-        let romm_env_config = RommConfig::from_env()?;
-        retvl.romm = retvl.romm.join(romm_env_config);
-        retvl.validate()?;
-        Ok(retvl)
-    }
-    pub fn validate(&self) -> Result<(), ConfigError> {
-        self.romm.validate()?;
-        self.system.validate()?;
         Ok(())
     }
 }

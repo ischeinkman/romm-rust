@@ -9,6 +9,12 @@ use crate::utils::async_walkdir;
 
 use super::Config;
 
+/// Finds all possible local save files based on the given [`Config`].
+///
+/// Returns:
+/// * The path on the local filesystem to the save file
+/// * The format string within `config.system.saves` that the path matched
+/// * The variables pulled from the path string based on that format string
 pub fn possible_saves(
     config: &Config,
 ) -> impl TryStream<Ok = (PathBuf, &FormatString, HashMap<String, String>), Error = io::Error> + '_

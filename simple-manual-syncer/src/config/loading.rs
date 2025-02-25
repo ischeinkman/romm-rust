@@ -2,6 +2,8 @@ use std::hash::Hash;
 
 use serde::{Deserialize, Serialize};
 
+/// Helper to serialize & deserialize a field that can either be a single value
+/// or a list of values.
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 #[serde(untagged)]
 pub enum FlattenedList<T> {

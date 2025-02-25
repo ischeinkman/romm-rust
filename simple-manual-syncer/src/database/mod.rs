@@ -145,13 +145,21 @@ mod tests {
             size: 9,
         };
         assert!(db
-            .query_metadata(&test_rom.rom(), &test_rom.name, test_rom.emulator.as_deref())
+            .query_metadata(
+                &test_rom.rom(),
+                &test_rom.name,
+                test_rom.emulator.as_deref()
+            )
             .unwrap()
             .is_empty());
         db.upsert_metadata(&test_rom).unwrap();
         assert_eq!(
-            db.query_metadata(&test_rom.rom(), &test_rom.name, test_rom.emulator.as_deref())
-                .unwrap(),
+            db.query_metadata(
+                &test_rom.rom(),
+                &test_rom.name,
+                test_rom.emulator.as_deref()
+            )
+            .unwrap(),
             test_rom
         );
         assert!(db
@@ -166,8 +174,12 @@ mod tests {
 
         db.upsert_metadata(&updated_rom).unwrap();
         assert_eq!(
-            db.query_metadata(&test_rom.rom(), &test_rom.name, test_rom.emulator.as_deref())
-                .unwrap(),
+            db.query_metadata(
+                &test_rom.rom(),
+                &test_rom.name,
+                test_rom.emulator.as_deref()
+            )
+            .unwrap(),
             updated_rom
         );
 
@@ -193,8 +205,12 @@ mod tests {
         );
 
         assert_eq!(
-            db.query_metadata(&test_rom.rom(), &test_rom.name, test_rom.emulator.as_deref())
-                .unwrap(),
+            db.query_metadata(
+                &test_rom.rom(),
+                &test_rom.name,
+                test_rom.emulator.as_deref()
+            )
+            .unwrap(),
             updated_rom
         );
     }
