@@ -2,12 +2,16 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 
-use crate::md5hash::{md5, Md5Hash};
+use crate::{
+    md5hash::{md5, Md5Hash},
+    path_format_strings::FormatString,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SaveMeta {
-    pub rom: String,
+    pub rom: Option<String>,
     pub name: String,
+    pub ext: String,
     pub emulator: Option<String>,
     pub created: DateTime<Utc>,
     pub updated: DateTime<Utc>,
@@ -15,13 +19,39 @@ pub struct SaveMeta {
     pub size: u64,
 }
 impl SaveMeta {
+    pub fn rom(&self) -> &str {
+        self.rom.as_deref().unwrap_or(&self.name)
+    }
+    pub fn output_target(&self, format: &FormatString) -> String {
+        let mut vars = HashMap::new();
+        if let Some(rom) = self.rom.as_deref() {
+            vars.insert("$ROM", rom.to_owned());
+        }
+        vars.insert("$NAME", self.name.clone());
+        vars.insert("$EXT", self.ext.clone());
+        vars.insert("$CREATED", self.created.to_rfc3339());
+        vars.insert("$UPDATED", self.updated.to_rfc3339());
+        vars.insert("$TIMESTAMP", self.timestamp().to_rfc3339());
+        if let Some(emu) = self.emulator.clone() {
+            vars.insert("$EMULATOR", emu);
+        }
+        let mut retvl = format.build_with_vars(&vars);
+        if retvl.ends_with("/") {
+            retvl.push_str(&self.name);
+            if !self.ext.is_empty() {
+                retvl.push('.');
+                retvl.push_str(&self.ext);
+            }
+        }
+        retvl
+    }
     pub fn apply_format_variables(
         &mut self,
         mut variables: HashMap<String, String>,
     ) -> Result<(), anyhow::Error> {
         self.rom = variables
             .remove("$ROM")
-            .unwrap_or(std::mem::take(&mut self.rom));
+            .or_else(|| std::mem::take(&mut self.rom));
         self.name = variables
             .remove("$NAME")
             .unwrap_or(std::mem::take(&mut self.name));
@@ -52,13 +82,14 @@ impl SaveMeta {
     pub fn timestamp(&self) -> DateTime<Utc> {
         self.created.max(self.updated)
     }
-    pub fn new_empty(rom: String, name: String, emulator: Option<String>) -> Self {
+    pub fn new_empty(rom: String, name: String, ext: String, emulator: Option<String>) -> Self {
         let hash = md5(std::io::Cursor::new([])).unwrap();
         let created = DateTime::from_timestamp_nanos(0);
         let updated = DateTime::from_timestamp_nanos(0);
         Self {
-            rom,
+            rom: Some(rom),
             name,
+            ext,
             emulator,
             created,
             updated,

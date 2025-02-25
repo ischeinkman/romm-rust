@@ -22,6 +22,8 @@ pub struct RommConfig {
     pub url: Option<Url>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<FormatString>,
 }
 
 impl Debug for RommConfig {
@@ -61,7 +63,11 @@ impl RommConfig {
             .transpose()
             .map_err(|e| anyhow::anyhow!("Could not parse {e:?} as valid UTF-8"))
             .context("Error parsing api key from ROMM_API_KEY")?;
-        Ok(Self { url, api_key })
+        Ok(Self {
+            url,
+            api_key,
+            format: None,
+        })
     }
     pub fn validate(&self) -> Result<(), ConfigError> {
         self.url
@@ -79,6 +85,7 @@ impl RommConfig {
         Self {
             url: other.url.or(self.url),
             api_key: other.api_key.or(self.api_key),
+            format: other.format.or(self.format),
         }
     }
 }

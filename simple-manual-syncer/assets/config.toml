@@ -1,16 +1,19 @@
 [system]
 # Current allowed variables:
-# * $EMULATOR
-# * $ROM 
-# * $EXT (not actually used)
+# * $NAME (defaults to full file/save name without extention)
+# * $EMULATOR (optional)
+# * $ROM (defaults to $NAME)
+# * $EXT (unused for metadata manipulation but exists for parsing file names)
+# * $TIMESTAMP (defaults to the romm/filesystem provided update time)
 
 saves = [
-    "/media/ilan/9581-B0A5/Saves/CurrentProfile/saves/$EMULATOR/$ROM.$EXT",
-    "/home/ilan/mediafs/media/rom-saves-manual/cart_savedata_backup",
+    "/media/ilan/9581-B0A5/Saves/CurrentProfile/saves/$EMULATOR/$NAME.$EXT",
+    "/home/ilan/mediafs/media/rom-saves-manual/cart_savedata_backup/$NAME_$TRASH_$TRASH2.$EXT",
 ]
 skip_hidden = true 
 database = "syncdb.sqlite"
 
 [romm]
+format = "$NAME-$TIMESTAMP.$EXT"
 #url = ""
 #api-key = ""

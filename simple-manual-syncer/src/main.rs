@@ -1,9 +1,9 @@
-use std::env;
+use std::{env, path::Path};
 
 use config::Config;
 use database::SaveMetaDatabase;
 use futures::TryStreamExt;
-use tracing::{info, level_filters::LevelFilter, warn};
+use tracing::{info, level_filters::LevelFilter, trace, warn};
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
 
 mod database;
@@ -68,18 +68,23 @@ async fn async_main() {
     );
 
     config::save_finding::possible_saves(&cfg)
-        .try_for_each(|(save, vars)| {
+        .try_for_each(|(save, fmt, vars)| {
             let cl = &cl;
             let db = &db;
+            let cfg = &cfg;
             async move {
+                trace!("Starting decision making tree for path {save:?}");
                 let mut device_meta = DeviceMeta::from_path(save.as_ref()).await.unwrap();
                 device_meta.meta.apply_format_variables(vars).unwrap();
-                let romm_meta = match cl.find_save_matching(&device_meta.meta).await {
+                let romm_meta = match cl
+                    .find_save_matching(&device_meta.meta, cfg.romm.format.as_ref())
+                    .await
+                {
                     Ok(data) => data,
                     Err(RommError::RomNotFound(_)) => {
                         warn!(
                             "Missing rom in remote for local file {}",
-                            device_meta.meta.rom
+                            device_meta.meta.rom()
                         );
                         return Ok(());
                     }
@@ -90,7 +95,7 @@ async fn async_main() {
 
                 let db_data = db
                     .query_metadata(
-                        &device_meta.meta.rom,
+                        device_meta.meta.rom(),
                         &device_meta.meta.name,
                         device_meta.meta.emulator.as_deref(),
                     )
@@ -103,11 +108,14 @@ async fn async_main() {
                 let new_meta = match action {
                     SyncDecision::Noop => device_meta.meta,
                     SyncDecision::PullToDevice => {
-                        cl.pull_save(&device_meta.path, &romm_meta).await.unwrap();
+                        let target = romm_meta.meta.output_target(fmt);
+                        cl.pull_save(Path::new(&target), &romm_meta).await.unwrap();
                         romm_meta.meta
                     }
                     SyncDecision::PushToRemote => {
-                        cl.push_save(&device_meta.path, &romm_meta).await.unwrap();
+                        cl.push_save(&device_meta.path, &romm_meta, cfg.romm.format.as_ref())
+                            .await
+                            .unwrap();
                         device_meta.meta
                     }
                 };

@@ -47,14 +47,16 @@ impl SaveMetaDatabase {
         let mut rows = stmt.query_map(params_from_iter(params), |row| {
             let name = row.get("name")?;
             let rom = row.get("rom")?;
+            let ext = row.get("ext")?;
             let emulator = row.get("emulator")?;
             let created = row.get("created")?;
             let updated = row.get("updated")?;
             let hash = Md5Hash::from_raw(row.get("md5")?);
             let size = row.get("size")?;
             let res = SaveMeta {
-                name,
                 rom,
+                name,
+                ext,
                 emulator,
                 created,
                 updated,
@@ -73,6 +75,7 @@ impl SaveMetaDatabase {
             SaveMeta::new_empty(
                 rom.to_owned(),
                 name.to_owned(),
+                String::default(),
                 emulator.map(|s| s.to_owned()),
             )
         });
@@ -82,22 +85,24 @@ impl SaveMetaDatabase {
     pub fn upsert_metadata(&self, metadata: &SaveMeta) -> Result<(), DatabaseError> {
         const QUERY: &str = r#"
 INSERT INTO saves(
-    name, rom, emulator, created, updated, md5, size
+    name, rom, ext, emulator, created, updated, md5, size
 ) VALUES 
-    (?1, ?2, ?3, ?4, ?5, ?6, ?7) 
+    (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) 
 ON CONFLICT DO UPDATE SET
     name = ?1,
     rom = ?2,
-    emulator = ?3,
-    created = ?4,
-    updated = ?5, 
-    md5 = ?6,
-    size = ?7"#;
+    ext = ?3,
+    emulator = ?4,
+    created = ?5,
+    updated = ?6, 
+    md5 = ?7,
+    size = ?8"#;
         let modified = self.con.execute(
             QUERY,
             (
                 &metadata.name,
-                &metadata.rom,
+                &metadata.rom(),
+                &metadata.ext,
                 metadata.emulator.as_deref(),
                 metadata.created,
                 metadata.updated,
@@ -130,8 +135,9 @@ mod tests {
     fn test_db_basic_ops() {
         let db = SaveMetaDatabase::new_in_memory().unwrap();
         let test_rom = SaveMeta {
-            rom: "TEST_ROM".to_owned(),
+            rom: Some("TEST_ROM".to_owned()),
             name: "TEST_ROM_SAVE".to_owned(),
+            ext: "sav".to_owned(),
             emulator: Some("TEST_EMULATOR".to_owned()),
             created: timestamp_now(),
             updated: timestamp_now(),
@@ -139,17 +145,17 @@ mod tests {
             size: 9,
         };
         assert!(db
-            .query_metadata(&test_rom.rom, &test_rom.name, test_rom.emulator.as_deref())
+            .query_metadata(&test_rom.rom(), &test_rom.name, test_rom.emulator.as_deref())
             .unwrap()
             .is_empty());
         db.upsert_metadata(&test_rom).unwrap();
         assert_eq!(
-            db.query_metadata(&test_rom.rom, &test_rom.name, test_rom.emulator.as_deref())
+            db.query_metadata(&test_rom.rom(), &test_rom.name, test_rom.emulator.as_deref())
                 .unwrap(),
             test_rom
         );
         assert!(db
-            .query_metadata(&test_rom.rom, &test_rom.name, None)
+            .query_metadata(&test_rom.rom(), &test_rom.name, None)
             .unwrap()
             .is_empty());
 
@@ -160,14 +166,15 @@ mod tests {
 
         db.upsert_metadata(&updated_rom).unwrap();
         assert_eq!(
-            db.query_metadata(&test_rom.rom, &test_rom.name, test_rom.emulator.as_deref())
+            db.query_metadata(&test_rom.rom(), &test_rom.name, test_rom.emulator.as_deref())
                 .unwrap(),
             updated_rom
         );
 
         let new_rom = SaveMeta {
-            rom: "new_rom".to_owned(),
+            rom: Some("new_rom".to_owned()),
             name: "new_rom_SAVE".to_owned(),
+            ext: "sav".to_owned(),
             emulator: None,
             created: timestamp_now(),
             updated: timestamp_now(),
@@ -175,18 +182,18 @@ mod tests {
             size: 9,
         };
         assert!(db
-            .query_metadata(&new_rom.rom, &new_rom.name, new_rom.emulator.as_deref())
+            .query_metadata(&new_rom.rom(), &new_rom.name, new_rom.emulator.as_deref())
             .unwrap()
             .is_empty());
         db.upsert_metadata(&new_rom).unwrap();
         assert_eq!(
-            db.query_metadata(&new_rom.rom, &new_rom.name, new_rom.emulator.as_deref())
+            db.query_metadata(&new_rom.rom(), &new_rom.name, new_rom.emulator.as_deref())
                 .unwrap(),
             new_rom
         );
 
         assert_eq!(
-            db.query_metadata(&test_rom.rom, &test_rom.name, test_rom.emulator.as_deref())
+            db.query_metadata(&test_rom.rom(), &test_rom.name, test_rom.emulator.as_deref())
                 .unwrap(),
             updated_rom
         );

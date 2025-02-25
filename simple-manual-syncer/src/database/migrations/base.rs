@@ -13,8 +13,9 @@ fn create_saves_table(con: &mut Connection) -> Result<(), rusqlite::Error> {
     con.execute(
         r#"
 CREATE TABLE saves(
-    name TEXT NOT NULL, 
     rom TEXT NOT NULL,
+    name TEXT NOT NULL, 
+    ext TEXT NOT NULL, 
     emulator TEXT, 
     created TEXT NOT NULL, 
     updated TEXT NOT NULL, 

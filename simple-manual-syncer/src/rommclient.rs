@@ -8,7 +8,7 @@ use reqwest::multipart::Form;
 use reqwest::multipart::Part;
 use reqwest::Client as HttpClient;
 use reqwest::Error as HttpError;
-use reqwest::{Body, ClientBuilder, Response};
+use reqwest::{ClientBuilder, Response};
 use romm_api::{DetailedRomSchema, RomSchema, SaveSchema};
 use serde::de::DeserializeOwned;
 use std::io;
@@ -16,11 +16,10 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::{collections::HashMap, path::Path, sync::RwLock};
 use thiserror::Error;
-use tokio::fs::File;
-use tracing::info;
-use tracing::{debug, trace};
+use tracing::{debug, error, info, trace};
 use url::Url;
 
+use crate::path_format_strings::FormatString;
 use crate::utils::download;
 use crate::{
     md5hash::{md5_stream, Md5Hash},
@@ -45,43 +44,6 @@ impl RawClient {
         Self { client, url_base }
     }
 
-    pub async fn raw_put(
-        &self,
-        endpoint: &str,
-        body: impl Into<Body>,
-    ) -> Result<Response, HttpError> {
-        let n = format!(
-            "{}/{}",
-            self.url_base.as_str().trim_end_matches('/'),
-            endpoint.trim_matches('/')
-        );
-        trace!("Calling PUT on ROMM url {n}");
-        self.client
-            .put(n.as_str())
-            .body(body)
-            .send()
-            .await?
-            .error_for_status()
-    }
-    #[expect(unused)]
-    pub async fn raw_post(
-        &self,
-        endpoint: &str,
-        body: impl Into<Body>,
-    ) -> Result<Response, HttpError> {
-        let n = format!(
-            "{}/{}",
-            self.url_base.as_str().trim_end_matches('/'),
-            endpoint.trim_matches('/')
-        );
-        trace!("Calling POST on ROMM url {n}");
-        self.client
-            .post(n.as_str())
-            .body(body)
-            .send()
-            .await?
-            .error_for_status()
-    }
     pub async fn raw_post_form(
         &self,
         endpoint: &str,
@@ -125,32 +87,29 @@ impl RommClient {
     }
 
     #[tracing::instrument(skip(self))]
-    pub async fn push_save(&self, save: &Path, meta: &RommSaveMeta) -> Result<(), RommError> {
-        if let Some(prev) = meta.save_id {
-            let fh = File::open(save).await?;
-            info!(
-                "Updating ROMM save {}/{} from local path {}.",
-                meta.rom_id,
-                prev,
-                save.display()
-            );
-            let ep = format!("/api/saves/{prev}");
-            self.raw.raw_put(&ep, fh).await?;
-        } else {
-            info!(
-                "Pushing new ROMM save to rom {} from local path {}.",
-                meta.rom_id,
-                save.display()
-            );
-            let mut ep = format!("/api/saves?rom_id={}", meta.rom_id);
-            if let Some(emu) = meta.meta.emulator.as_deref() {
-                ep.push_str("&emulator=");
-                ep.push_str(emu);
-            }
-
-            let form = Form::new().part("saves", Part::file(save).await?);
-            self.raw.raw_post_form(&ep, form).await?;
+    pub async fn push_save(
+        &self,
+        save: &Path,
+        meta: &RommSaveMeta,
+        fmt: Option<&FormatString>,
+    ) -> Result<(), RommError> {
+        info!(
+            "Pushing ROMM save to rom {} from local path {}.",
+            meta.rom_id,
+            save.display()
+        );
+        let mut ep = format!("/api/saves?rom_id={}", meta.rom_id);
+        if let Some(emu) = meta.meta.emulator.as_deref() {
+            ep.push_str("&emulator=");
+            ep.push_str(emu);
         }
+
+        let target = fmt
+            .map(|fmt| meta.meta.output_target(fmt))
+            .unwrap_or_else(|| format!("{}.{}", meta.meta.name, meta.meta.ext));
+
+        let form = Form::new().part("saves", Part::file(save).await?.file_name(target));
+        self.raw.raw_post_form(&ep, form).await?;
         info!("Finished save upload.");
         Ok(())
     }
@@ -237,11 +196,25 @@ impl RommClient {
     }
 
     #[tracing::instrument(skip(self))]
-    pub async fn find_save_matching(&self, meta: &SaveMeta) -> Result<RommSaveMeta, RommError> {
+    pub async fn find_save_matching(
+        &self,
+        meta: &SaveMeta,
+        fmt: Option<&FormatString>,
+    ) -> Result<RommSaveMeta, RommError> {
         debug!("Looking for saves matching given metadata.");
-        let all_possible = self.saves_for_rom(&meta.rom).await?;
+        let all_possible = self.saves_for_rom(meta.rom()).await?;
         debug!("Found {} possible saves.", all_possible.len());
-        let mut filtered = all_possible.into_iter().filter(|save| {
+        let filtered = all_possible.into_iter().filter(|save| {
+            match (fmt, save.raw_name.as_deref()) {
+                (Some(fmt), Some(name)) if !fmt.matches(name) => {
+                    return false;
+                }
+                (Some(_), None) => {
+                    error!("Found a remote ROMM save whose raw_name we couldn't apply!? This should be impossible. Meta is: {save:?}");
+                    return false;
+                }
+                _ => {}
+            }
             if save.meta.hash == meta.hash {
                 return true;
             }
@@ -253,16 +226,34 @@ impl RommClient {
             };
             save.meta.name == meta.name
         });
-        let Some(found) = filtered.next() else {
-            return Ok(RommSaveMeta::new_save(self.rom_id(&meta.rom).await?, meta));
-        };
-        if filtered.next().is_some() {
-            return Err(RommError::TooManySaves {
-                meta: meta.clone(),
-                count: filtered.count() + 2,
-            });
+        let mut all_found: Vec<RommSaveMeta> = Vec::new();
+        for found in filtered {
+            let cur_ts = all_found.first().map(|meta| meta.meta.timestamp());
+            match (cur_ts, found.meta.timestamp()) {
+                (None, _) => {
+                    all_found.push(found);
+                }
+                (Some(cur_ts), nxt_ts) if cur_ts == nxt_ts => {
+                    all_found.push(found);
+                }
+                (Some(cur_ts), nxt_ts) if cur_ts < nxt_ts => {
+                    all_found.clear();
+                    all_found.push(found);
+                }
+                (Some(_), _) => {}
+            }
         }
-        Ok(found)
+        match all_found.len() {
+            0 => {
+                let rom_id = self.rom_id(meta.rom()).await?;
+                Ok(RommSaveMeta::new_save(rom_id, meta))
+            }
+            1 => Ok(all_found.pop().unwrap()),
+            count => Err(RommError::TooManySaves {
+                meta: meta.clone(),
+                count,
+            }),
+        }
     }
 }
 
@@ -274,14 +265,17 @@ async fn parse_romm_saves(
     for save in rom_data.user_saves.iter() {
         let fut = async {
             let rom = rom_data.file_name_no_ext.clone();
+            let raw_name = save.file_name.clone();
             let name = save.file_name_no_ext.clone();
+            let ext = save.file_extension.clone();
             let emulator = save.emulator.clone();
             let created = save.created_at;
             let updated = save.updated_at;
             let (hash, size) = romm_save_md5_size(client, save).await?;
             let meta = SaveMeta {
-                rom,
+                rom: Some(rom),
                 name,
+                ext,
                 emulator,
                 created,
                 updated,
@@ -289,6 +283,7 @@ async fn parse_romm_saves(
                 size,
             };
             Result::<_, HttpError>::Ok(RommSaveMeta::from_data(
+                Some(raw_name),
                 rom_data.id,
                 Some(save.id),
                 Some(save.download_path.clone()),
@@ -327,17 +322,20 @@ pub struct RommSaveMeta {
     pub rom_id: i64,
     pub save_id: Option<i64>,
     pub download_path: Option<String>,
+    pub raw_name: Option<String>,
     pub meta: SaveMeta,
 }
 
 impl RommSaveMeta {
     pub fn from_data(
+        raw_name: Option<String>,
         rom_id: i64,
         save_id: Option<i64>,
         download_path: Option<String>,
         meta: SaveMeta,
     ) -> Self {
         Self {
+            raw_name,
             rom_id,
             download_path,
             save_id,
@@ -346,11 +344,12 @@ impl RommSaveMeta {
     }
     pub fn new_save(rom_id: i64, base_meta: &SaveMeta) -> Self {
         let meta = SaveMeta::new_empty(
-            base_meta.rom.clone(),
+            base_meta.rom().to_owned(),
             base_meta.name.clone(),
+            base_meta.ext.clone(),
             base_meta.emulator.clone(),
         );
-        Self::from_data(rom_id, None, None, meta)
+        Self::from_data(None, rom_id, None, None, meta)
     }
 }
 

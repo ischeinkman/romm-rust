@@ -1,6 +1,8 @@
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::ffi::OsStr;
+use std::hash::Hash;
 use std::path::Path;
+use std::{borrow::Borrow, collections::HashMap};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -38,8 +40,29 @@ impl<'a> From<&'a str> for FormatString {
 }
 
 impl FormatString {
+    pub fn build_with_vars<K, V>(&self, vars: &HashMap<K, V>) -> String
+    where
+        K: Borrow<str> + Eq + Hash,
+        V: AsRef<str>,
+    {
+        let mut retvl = String::new();
+        for portion in split_variable_portions(&self.0) {
+            if portion.starts_with("$") {
+                let nxt = vars.get(portion).map(|s| s.as_ref()).unwrap_or(portion);
+                retvl.push_str(nxt);
+            } else {
+                retvl.push_str(portion);
+            }
+        }
+        retvl
+    }
     pub fn prefix(&self) -> &str {
         split_variable_portions(&self.0).next().unwrap_or("/")
+    }
+    pub fn variables(&self) -> HashSet<&str> {
+        split_variable_portions(&self.0)
+            .filter(|s| s.starts_with("$"))
+            .collect()
     }
 
     /// Checks whether or not the given [`Path`] matches this [`FormatString`].
@@ -53,6 +76,9 @@ impl FormatString {
     /// ```
     pub fn matches_path(&self, path: &Path) -> bool {
         self.resolve(path).is_ok()
+    }
+    pub fn matches(&self, s: &str) -> bool {
+        self.matches_path(Path::new(s))
     }
     /// Extracts the `$`-delimited values from a file path using the given format string.
     ///

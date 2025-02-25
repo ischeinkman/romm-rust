@@ -25,17 +25,9 @@ impl DeviceMeta {
     pub fn new(path: PathBuf, meta: SaveMeta) -> Self {
         Self { path, meta }
     }
-    pub async fn from_path(path: &Path) -> io::Result<Self> {
-        let rom = path
-            .file_stem()
-            .map(|s| s.to_string_lossy())
-            .unwrap_or_default()
-            .into_owned();
-        Self::from_path_with_rom(rom, path).await
-    }
     #[tracing::instrument]
-    pub async fn from_path_with_rom(rom: String, path: &Path) -> io::Result<Self> {
-        debug!("Building device-level metadata for rom {rom} save at path {path:?}");
+    pub async fn from_path(path: &Path) -> io::Result<Self> {
+        debug!("Building device-level metadata for save at path {path:?}");
         let path = path.to_owned();
         let fs_meta = fs::metadata(&path).await?;
         let created = unwrap_timestamp(fs_meta.created())?;
@@ -56,9 +48,14 @@ impl DeviceMeta {
         let hash = md5_stream(byte_stream).await?;
         debug!("Finished retrieving device save information.");
         let name = path.file_stem().unwrap().to_string_lossy().into_owned();
+        let ext = path
+            .extension()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let meta = SaveMeta {
-            rom,
+            rom: None,
             name,
+            ext,
             created,
             updated,
             hash,
