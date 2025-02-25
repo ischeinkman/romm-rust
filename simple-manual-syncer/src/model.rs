@@ -124,4 +124,10 @@ impl SaveMeta {
     pub fn is_empty(&self) -> bool {
         self.size == 0
     }
+
+    /// Returns whether this metadata and the other metadata represent the same
+    /// underlying save file, based on hash & size information.
+    pub fn same_file(&self, other: &Self) -> bool {
+        self.size == other.size && self.hash == other.hash
+    }
 }

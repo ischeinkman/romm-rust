@@ -6,9 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.95"
 chrono = { version = "0.4.39", features = ["serde"] }
-embedded-graphics = "0.8.1"
 futures = "0.3.31"
-linkme = "0.3.31"
 md-5 = "0.10.6"
 reqwest = { version = "0.12.12", features = ["stream", "multipart"] }
 romm-api = { path = "../romm-api" }
@@ -20,5 +18,4 @@ tokio = { version = "1.43.0", features = ["full"] }
 toml = "0.8.20"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["json", "env-filter"] }
-# ureq = { version = "3.0.5", features = ["json"] }
 url = { version = "2.5.4", features = ["serde"] }

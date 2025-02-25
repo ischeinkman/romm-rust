@@ -226,7 +226,7 @@ impl RommClient {
                 }
                 _ => {}
             }
-            if save.meta.hash == meta.hash {
+            if save.meta.same_file(meta) {
                 return true;
             }
             match (save.meta.emulator.as_deref(), meta.emulator.as_deref()) {
