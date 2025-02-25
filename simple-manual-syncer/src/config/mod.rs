@@ -159,6 +159,22 @@ pub struct SystemConfig {
     /// for save files.
     #[serde(default, skip_serializing_if = "FlattenedList::is_empty")]
     pub saves: FlattenedList<FormatString>,
+    /// Allowlist of specific files/directories to be kept in sync.
+    ///
+    /// If [`None`] then no allowlist will be applied; any file matching an
+    /// entry in `saves` and no entry in the deny list will be matched. If
+    /// `Some(vec![])`, then no files will be synced.
+    ///
+    /// This field is mainly interacted with via the UI; we don't expect it to
+    /// be manipulated directly.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow: Option<Vec<PathBuf>>,
+    /// Denylist of specific files/directories to NOT be kept in sync.
+    ///
+    /// This field is mainly interacted with via the UI; we don't expect it to
+    /// be manipulated directly.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deny: Vec<PathBuf>,
     /// Whether or not we should ignore hidden files; defaults to `true`.
     #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub skip_hidden: bool,
@@ -169,10 +185,22 @@ pub struct SystemConfig {
 
 impl SystemConfig {
     pub fn join(self, other: Self) -> Self {
+        let mut deny = other.deny;
+        deny.extend(self.deny);
+        let allow = match (self.allow, other.allow) {
+            (None, None) => None,
+            (None, Some(a)) | (Some(a), None) => Some(a),
+            (Some(mut a), Some(b)) => {
+                a.extend(b);
+                Some(a)
+            }
+        };
         Self {
             saves: self.saves.join(other.saves),
             skip_hidden: self.skip_hidden || other.skip_hidden,
             database: other.database.or(self.database),
+            deny,
+            allow,
         }
     }
     pub fn validate(&self) -> Result<(), ConfigError> {

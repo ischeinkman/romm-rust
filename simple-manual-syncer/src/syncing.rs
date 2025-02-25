@@ -32,7 +32,10 @@ pub async fn run_sync(
                     run_sync_for_save(&device_meta, fmt, cfg.romm.format.as_ref(), cl, db).await
                 }
             });
-    let mut errors = results.filter_map(|res| futures::future::ready(res.err())).collect::<Vec<_>>().await; 
+    let mut errors = results
+        .filter_map(|res| futures::future::ready(res.err()))
+        .collect::<Vec<_>>()
+        .await;
 
     // TODO: Do something with the rest of the errors
     errors.pop().map_or(Ok(()), Err)

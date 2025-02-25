@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 use std::{collections::HashMap, io};
 
-use futures::{future, stream, FutureExt, StreamExt, TryFutureExt, TryStream, TryStreamExt};
+use futures::future::ready;
+use futures::{stream, FutureExt, StreamExt, TryFutureExt, TryStream, TryStreamExt};
 use tracing::{debug, error, trace, warn};
 
 use crate::path_format_strings::FormatString;
@@ -25,12 +26,29 @@ pub fn possible_saves(
         .map_ok(|root| async_walkdir(&root))
         .try_flatten();
 
-    let no_hidden = full_tree.try_filter(move |pt| {
+    let matches_allowdeny = full_tree
+        .try_filter(move |pt| {
+            let Some(allow) = config.system.allow.as_deref() else {
+                return ready(true);
+            };
+            let res = allow.iter().any(|prefix| pt.starts_with(prefix));
+            ready(res)
+        })
+        .try_filter(move |pt| {
+            let res = !config
+                .system
+                .deny
+                .iter()
+                .any(|prefix| pt.starts_with(prefix));
+            ready(res)
+        });
+
+    let no_hidden = matches_allowdeny.try_filter(move |pt| {
         let is_hidden = pt
             .file_stem()
             .map(|raw| raw.to_string_lossy().starts_with('.'))
             .unwrap_or(false);
-        future::ready(!skip_hidden || !is_hidden)
+        ready(!skip_hidden || !is_hidden)
     });
 
     let matching_paths = no_hidden.try_filter_map(move |path| {
@@ -54,7 +72,7 @@ pub fn possible_saves(
         }
         trace!("Result: {fmt:?}");
 
-        future::ready(Ok(fmt.map(|fmt| (path, fmt, variables))))
+        ready(Ok(fmt.map(|fmt| (path, fmt, variables))))
     });
     matching_paths.try_filter(|(path, _, _)| {
         tokio::fs::metadata(path.to_path_buf())
@@ -66,28 +84,42 @@ pub fn possible_saves(
 fn save_roots(config: &Config) -> impl Iterator<Item = PathBuf> + '_ {
     let all_fmts = config.system.saves.as_slice().iter();
     let possible = all_fmts.map(|s| s.prefix()).map(PathBuf::from);
-    possible.filter(
-        |pt| match std::fs::symlink_metadata(pt).map(|meta| meta.is_dir()) {
-            Ok(true) => true,
-            Ok(false) => {
-                warn!("Configured save path {} is not a path!?", pt.display());
-                false
-            }
-            Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                debug!(
-                    "Configured save path {} was not found; skipping.",
-                    pt.display()
-                );
-                false
-            }
-            Err(e) => {
-                error!(
-                    "Error looking for save directory {}: {:?}.",
-                    pt.display(),
-                    e
-                );
-                false
-            }
-        },
-    )
+    possible
+        .filter(|pt| {
+            let Some(allowlist) = config.system.allow.as_deref() else {
+                return true;
+            };
+            allowlist.iter().any(|prefix| pt.starts_with(prefix))
+        })
+        .filter(|pt| {
+            !config
+                .system
+                .deny
+                .iter()
+                .any(|prefix| pt.starts_with(prefix))
+        })
+        .filter(
+            |pt| match std::fs::symlink_metadata(pt).map(|meta| meta.is_dir()) {
+                Ok(true) => true,
+                Ok(false) => {
+                    warn!("Configured save path {} is not a path!?", pt.display());
+                    false
+                }
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                    debug!(
+                        "Configured save path {} was not found; skipping.",
+                        pt.display()
+                    );
+                    false
+                }
+                Err(e) => {
+                    error!(
+                        "Error looking for save directory {}: {:?}.",
+                        pt.display(),
+                        e
+                    );
+                    false
+                }
+            },
+        )
 }
