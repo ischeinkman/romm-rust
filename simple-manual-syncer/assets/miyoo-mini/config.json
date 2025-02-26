@@ -1,0 +1,6 @@
+{
+    "label" : "Romm Save Syncer", 
+    "icon" : "../../Icons/Default/app/terminal.png",
+    "description" : "A small client for syncing save files between the Miyoo Mini and Romm",
+    "launch" : "launch.sh"
+}

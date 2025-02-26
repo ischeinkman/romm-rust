@@ -1,5 +1,16 @@
-use std::env;
+use std::{
+    env,
+    time::{Duration, Instant},
+};
 
+use embedded_graphics::{
+    mono_font::{iso_8859_16::FONT_10X20, MonoFont, MonoTextStyle},
+    pixelcolor::Rgb888,
+    prelude::{DrawTarget, Point, RgbColor},
+    text::Text,
+    Drawable,
+};
+use embedded_vintage_fonts::FONT_24X32;
 use tracing::{info, level_filters::LevelFilter};
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
 
@@ -16,6 +27,8 @@ use model::SaveMeta;
 mod path_format_strings;
 mod syncing;
 use syncing::run_sync;
+use ui::{InputReader, MiyooButton, MiyooFramebuffer};
+mod ui;
 mod utils;
 
 fn main() {
@@ -56,8 +69,9 @@ fn init_logger() {
     subscriber.finish().init();
 }
 
+#[allow(unused)]
 #[tracing::instrument]
-async fn async_main() {
+async fn async_main_1() {
     let args = std::env::args().collect::<Vec<_>>();
     let cfg = Config::load(args.into_iter().skip(1)).unwrap();
     let db = SaveMetaDatabase::open(cfg.system.database.as_deref().unwrap()).unwrap();
@@ -68,4 +82,25 @@ async fn async_main() {
     );
 
     run_sync(&cfg, &cl, &db).await.unwrap();
+}
+
+async fn async_main() {
+    let mut fb = MiyooFramebuffer::find_any().unwrap();
+    let mut input = InputReader::new().unwrap();
+    loop {
+        fb.flush().unwrap();
+        let (btn, evt) = input.next_event().await.unwrap();
+        fb.clear(Rgb888::new(0x11, 0xee, 0x22)).unwrap();
+        let msg = format!("{btn:?}, {evt:?}");
+
+        let txt = Text::new(
+            &msg,
+            Point::new(60, 60),
+            MonoTextStyle::new(&FONT_24X32, Rgb888::new(0xff, 0, 0xee)),
+        );
+        txt.draw(&mut fb).unwrap();
+        if btn == MiyooButton::Start {
+            break;
+        }
+    }
 }

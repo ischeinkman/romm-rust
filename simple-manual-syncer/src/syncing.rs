@@ -9,7 +9,7 @@ use crate::{
     deviceclient::DeviceMeta,
     model::SaveMeta,
     path_format_strings::FormatString,
-    rommclient::{RommClient, RommError},
+    rommclient::{RommClient, RommError, RommSaveMeta},
 };
 
 pub async fn run_sync(
@@ -72,6 +72,19 @@ pub async fn run_sync_for_save(
         device_meta.meta.emulator.as_deref(),
     )?;
     let action = decide_action(&device_meta.meta, &romm_meta.meta, &db_data)?;
+    perform_action(&action, device_meta, device_format, &romm_meta, romm_format, cl, db).await?;
+    Ok(())
+}
+
+async fn perform_action(
+    action: &SyncDecision,
+    device_meta: &DeviceMeta,
+    device_format: &FormatString,
+    romm_meta : &RommSaveMeta, 
+    romm_format: Option<&FormatString>,
+    cl: &RommClient,
+    db: &SaveMetaDatabase,
+) -> Result<(), anyhow::Error> {
     info!(
         "{:?} ({:?}, {:?}) => {:?}",
         device_meta.path, romm_meta.rom_id, romm_meta.save_id, action
@@ -79,11 +92,11 @@ pub async fn run_sync_for_save(
     let new_meta = match action.target() {
         Some(PushTarget::Device) => {
             let target = romm_meta.meta.output_target(device_format);
-            cl.pull_save(Path::new(&target), &romm_meta).await?;
+            cl.pull_save(Path::new(&target), romm_meta).await?;
             &romm_meta.meta
         }
         Some(PushTarget::Remote) => {
-            cl.push_save(&device_meta.path, &romm_meta, romm_format)
+            cl.push_save(&device_meta.path, romm_meta, romm_format)
                 .await?;
             &device_meta.meta
         }
