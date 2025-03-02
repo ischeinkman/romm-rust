@@ -1,5 +1,5 @@
 [workspace]
 resolver = "2"
 members = [
-	"romm-api", "simple-manual-syncer",
+	"crates/romm-api", "crates/simple-manual-syncer",
 ]
