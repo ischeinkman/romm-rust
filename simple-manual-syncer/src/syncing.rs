@@ -76,7 +76,7 @@ pub async fn run_sync_for_save(
     Ok(())
 }
 
-async fn perform_action(
+pub async fn perform_action(
     action: &SyncDecision,
     device_meta: &DeviceMeta,
     device_format: &FormatString,

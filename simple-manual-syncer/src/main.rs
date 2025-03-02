@@ -1,17 +1,6 @@
-use std::{
-    env,
-    time::{Duration, Instant},
-};
+use std::{env, path::Path};
 
-use embedded_graphics::{
-    mono_font::{iso_8859_16::FONT_10X20, MonoFont, MonoTextStyle},
-    pixelcolor::Rgb888,
-    prelude::{DrawTarget, Point, RgbColor},
-    text::Text,
-    Drawable,
-};
-use embedded_vintage_fonts::FONT_24X32;
-use tracing::{info, level_filters::LevelFilter};
+use tracing::{debug, info, level_filters::LevelFilter};
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
 
 mod database;
@@ -27,9 +16,15 @@ use model::SaveMeta;
 mod path_format_strings;
 mod syncing;
 use syncing::run_sync;
-use ui::{InputReader, MiyooButton, MiyooFramebuffer};
 mod ui;
 mod utils;
+
+const CONFIG_PATHS: &[&str] = &[
+    // Miyoo mini -- next to the binary
+    "sync_config.toml",
+    // Linux
+    "~/.config/simply-manual-syncer/config.toml",
+];
 
 fn main() {
     init_logger();
@@ -71,7 +66,7 @@ fn init_logger() {
 
 #[allow(unused)]
 #[tracing::instrument]
-async fn async_main_1() {
+async fn async_main() {
     let args = std::env::args().collect::<Vec<_>>();
     let cfg = Config::load(args.into_iter().skip(1)).unwrap();
     let db = SaveMetaDatabase::open(cfg.system.database.as_deref().unwrap()).unwrap();
@@ -84,23 +79,21 @@ async fn async_main_1() {
     run_sync(&cfg, &cl, &db).await.unwrap();
 }
 
-async fn async_main() {
-    let mut fb = MiyooFramebuffer::find_any().unwrap();
-    let mut input = InputReader::new().unwrap();
-    loop {
-        fb.flush().unwrap();
-        let (btn, evt) = input.next_event().await.unwrap();
-        fb.clear(Rgb888::new(0x11, 0xee, 0x22)).unwrap();
-        let msg = format!("{btn:?}, {evt:?}");
+pub enum DaemonCommand {
+    DoSync,
+}
 
-        let txt = Text::new(
-            &msg,
-            Point::new(60, 60),
-            MonoTextStyle::new(&FONT_24X32, Rgb888::new(0xff, 0, 0xee)),
-        );
-        txt.draw(&mut fb).unwrap();
-        if btn == MiyooButton::Start {
-            break;
-        }
-    }
+async fn do_sync() -> Result<(), anyhow::Error> {
+    let cfg = Config::load(CONFIG_PATHS.iter())?;
+    cfg.validate()?;
+    let db = SaveMetaDatabase::open(cfg.system.database.as_deref().unwrap())?;
+    info!("Performing sync.");
+    debug!("Performing sync with config: {cfg:?}");
+    let cl = RommClient::new(
+        cfg.romm.url.clone().unwrap(),
+        cfg.romm.api_key.clone().unwrap(),
+    );
+
+    run_sync(&cfg, &cl, &db).await?;
+    Ok(())
 }
