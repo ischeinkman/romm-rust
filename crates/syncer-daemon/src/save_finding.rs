@@ -5,7 +5,8 @@ use futures::future::ready;
 use futures::{stream, FutureExt, StreamExt, TryFutureExt, TryStream, TryStreamExt};
 use tracing::{debug, error, trace, warn};
 
-use crate::path_format_strings::FormatString;
+use syncer_model::path_format_strings::FormatString;
+
 use crate::utils::async_walkdir;
 
 use super::Config;

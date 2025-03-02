@@ -19,7 +19,8 @@ use thiserror::Error;
 use tracing::{debug, error, info, trace};
 use url::Url;
 
-use crate::path_format_strings::FormatString;
+use syncer_model::path_format_strings::FormatString;
+
 use crate::utils::download;
 use crate::{
     md5hash::{md5_stream, Md5Hash},

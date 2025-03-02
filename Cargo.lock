@@ -1701,11 +1701,26 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "syncer-model",
  "thiserror",
  "tokio",
  "toml",
  "tracing",
  "tracing-subscriber",
+ "url",
+]
+
+[[package]]
+name = "syncer-model"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "toml",
+ "tracing",
  "url",
 ]
 

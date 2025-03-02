@@ -3,17 +3,17 @@ use std::{env, path::Path};
 use tracing::{debug, info, level_filters::LevelFilter};
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
 
+use syncer_model::config::Config;
+
 mod database;
 use database::SaveMetaDatabase;
 mod md5hash;
 mod rommclient;
 use rommclient::RommClient;
-mod config;
-use config::Config;
+mod save_finding;
 mod deviceclient;
 mod model;
 use model::SaveMeta;
-mod path_format_strings;
 mod syncing;
 use syncing::run_sync;
 mod ui;
@@ -45,8 +45,8 @@ fn init_logger() {
         .with_env_filter(trace_env)
         .with_file(true)
         .with_line_number(true);
-    let no_color = env::var_os("NO_COLOR").map_or(false, |s| !s.eq_ignore_ascii_case("0"));
-    let json_log = env::var_os("ROM_SYNC_LOG_JSON").map_or(false, |s| !s.eq_ignore_ascii_case("0"));
+    let no_color = env::var_os("NO_COLOR").is_some_and(|s| !s.eq_ignore_ascii_case("0"));
+    let json_log = env::var_os("ROM_SYNC_LOG_JSON").is_some_and(|s| !s.eq_ignore_ascii_case("0"));
     match (no_color, json_log) {
         (false, false) => {
             subscriber = subscriber.with_ansi(true);
@@ -79,9 +79,6 @@ async fn async_main() {
     run_sync(&cfg, &cl, &db).await.unwrap();
 }
 
-pub enum DaemonCommand {
-    DoSync,
-}
 
 async fn do_sync() -> Result<(), anyhow::Error> {
     let cfg = Config::load(CONFIG_PATHS.iter())?;

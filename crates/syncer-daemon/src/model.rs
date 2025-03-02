@@ -2,10 +2,9 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 
-use crate::{
-    md5hash::{md5, Md5Hash},
-    path_format_strings::FormatString,
-};
+use syncer_model::path_format_strings::FormatString;
+
+use crate::md5hash::{md5, Md5Hash};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SaveMeta {

@@ -13,7 +13,6 @@ mod loading;
 use loading::{FlattenedList, ParseableDuration};
 
 use crate::path_format_strings::FormatString;
-pub mod save_finding;
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

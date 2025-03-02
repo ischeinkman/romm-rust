@@ -3,13 +3,15 @@ use std::path::Path;
 use futures::{StreamExt, TryStreamExt};
 use tracing::{info, trace, warn};
 
+use syncer_model::config::Config;
+use syncer_model::path_format_strings::FormatString;
+
 use crate::{
-    config::{save_finding::possible_saves, Config},
     database::SaveMetaDatabase,
     deviceclient::DeviceMeta,
     model::SaveMeta,
-    path_format_strings::FormatString,
     rommclient::{RommClient, RommError, RommSaveMeta},
+    save_finding::possible_saves,
 };
 
 pub async fn run_sync(
@@ -72,7 +74,16 @@ pub async fn run_sync_for_save(
         device_meta.meta.emulator.as_deref(),
     )?;
     let action = decide_action(&device_meta.meta, &romm_meta.meta, &db_data)?;
-    perform_action(&action, device_meta, device_format, &romm_meta, romm_format, cl, db).await?;
+    perform_action(
+        &action,
+        device_meta,
+        device_format,
+        &romm_meta,
+        romm_format,
+        cl,
+        db,
+    )
+    .await?;
     Ok(())
 }
 
@@ -80,7 +91,7 @@ pub async fn perform_action(
     action: &SyncDecision,
     device_meta: &DeviceMeta,
     device_format: &FormatString,
-    romm_meta : &RommSaveMeta, 
+    romm_meta: &RommSaveMeta,
     romm_format: Option<&FormatString>,
     cl: &RommClient,
     db: &SaveMetaDatabase,
