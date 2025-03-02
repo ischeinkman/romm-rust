@@ -1,5 +1,5 @@
 [package]
-name = "simple-manual-syncer"
+name = "syncer-daemon"
 version = "0.1.0"
 edition = "2021"
 
