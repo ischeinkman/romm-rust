@@ -1,6 +1,7 @@
-use std::hash::Hash;
+use std::{hash::Hash, num::ParseIntError, ops::Deref, str::FromStr, time::Duration};
 
-use serde::{Deserialize, Serialize};
+use serde::{de::Visitor, Deserialize, Deserializer, Serialize};
+use thiserror::Error;
 
 /// Helper to serialize & deserialize a field that can either be a single value
 /// or a list of values.
@@ -75,3 +76,120 @@ where
 }
 
 impl<T> Eq for FlattenedList<T> where T: Eq {}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, PartialOrd, Ord)]
+pub struct ParseableDuration(Duration);
+
+const DURATION_SUFFIXES: &[(u64, &str)] = &[
+    (0, "ns"),
+    (1000, "us"),
+    (1000 * 1000, "ms"),
+    (1000 * 1000 * 1000, "s"),
+    (60 * 1000 * 1000 * 1000, "m"),
+    (60 * 60 * 1000 * 1000 * 1000, "h"),
+    (24 * 60 * 60 * 1000 * 1000 * 1000, "d"),
+];
+
+const fn nanos_to_unitted(nanos: u128) -> (u64, &'static str) {
+    let mut idx = 1;
+    loop {
+        if idx >= DURATION_SUFFIXES.len() {
+            break;
+        }
+        let (cur_stop_point, _) = DURATION_SUFFIXES[idx];
+        let cur_stop_point = cur_stop_point as u128;
+        if nanos % cur_stop_point != 0 {
+            idx -= 1;
+            break;
+        }
+        idx += 1;
+    }
+    let (coeff, suffix) = DURATION_SUFFIXES[idx];
+    let coeff = coeff as u128;
+    if coeff == 0 {
+        (nanos as _, suffix)
+    } else {
+        ((nanos / coeff) as _, suffix)
+    }
+}
+
+impl AsRef<Duration> for ParseableDuration {
+    fn as_ref(&self) -> &Duration {
+        &self.0
+    }
+}
+
+impl Deref for ParseableDuration {
+    type Target = Duration;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum ParseDurationError {
+    #[error(transparent)]
+    InvalidInteger(#[from] ParseIntError),
+    #[error("Invalid suffix: {0}")]
+    InvalidSuffix(String),
+}
+impl FromStr for ParseableDuration {
+    type Err = ParseDurationError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let split = s.find(|c: char| !c.is_ascii_digit()).unwrap_or(s.len());
+        let (n, suffix) = s.split_at(split);
+        let coeff = DURATION_SUFFIXES
+            .iter()
+            .find(|(_, check)| check.eq_ignore_ascii_case(suffix))
+            .map(|(k, _)| *k)
+            .ok_or_else(|| ParseDurationError::InvalidSuffix(suffix.to_owned()))?;
+
+        let n = n.parse::<u64>()?;
+        Ok(ParseableDuration(Duration::from_nanos(n * coeff)))
+    }
+}
+
+impl Serialize for ParseableDuration {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let (n, suffix) = nanos_to_unitted(self.0.as_nanos());
+        serializer.serialize_str(&format!("{n}{suffix}"))
+    }
+}
+
+impl<'de> Deserialize<'de> for ParseableDuration {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(ParseDurationVisitor)
+    }
+}
+
+struct ParseDurationVisitor;
+
+impl Visitor<'_> for ParseDurationVisitor {
+    type Value = ParseableDuration;
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(formatter, "a number with a unit suffix")
+    }
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        ParseableDuration::from_str(v).map_err(E::custom)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_suffixes() {
+        assert_eq!(nanos_to_unitted(500), (500, "ns"));
+        assert_eq!(nanos_to_unitted(1000), (1, "us"));
+        assert_eq!(nanos_to_unitted(1001), (1001, "ns"));
+    }
+}

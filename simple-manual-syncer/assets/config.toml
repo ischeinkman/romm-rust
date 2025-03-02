@@ -9,8 +9,7 @@
 # * $EXT (filename extension) 
 # * $TIMESTAMP (defaults to the romm/filesystem provided update time)
 saves = [
-    "/media/ilan/9581-B0A5/Saves/CurrentProfile/saves/$EMULATOR/$NAME.$EXT",
-    "/home/ilan/mediafs/media/rom-saves-manual/cart_savedata_backup/$NAME_$TRASH_$TRASH2.$EXT",
+    "/mnt/SDCARD/Saves/CurrentProfile/saves/$EMULATOR/$NAME.$EXT",
 ]
 
 # Should we skip hidden files in the save directories?
@@ -30,6 +29,9 @@ database = "syncdb.sqlite"
 # If set, we will NOT sync save files in these files/directories, even if they
 # match both an entire in `saves` and an entry in the `allow` list.
 # deny = []
+
+# How often the daemon should check for any necessary resyncs
+poll_interval = "30m" 
 
 [romm]
 

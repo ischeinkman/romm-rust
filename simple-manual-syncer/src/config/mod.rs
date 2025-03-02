@@ -10,7 +10,7 @@ use thiserror::Error;
 use url::Url;
 
 mod loading;
-use loading::FlattenedList;
+use loading::{FlattenedList, ParseableDuration};
 
 use crate::path_format_strings::FormatString;
 pub mod save_finding;
@@ -181,6 +181,9 @@ pub struct SystemConfig {
     /// Where to put the local sync database, used for checking for modification
     /// conflicts and keep a record of updates.
     pub database: Option<PathBuf>,
+
+    /// How often the daemon should poll the host & server for changes.
+    pub poll_interval : ParseableDuration, 
 }
 
 impl SystemConfig {
@@ -201,6 +204,7 @@ impl SystemConfig {
             database: other.database.or(self.database),
             deny,
             allow,
+            poll_interval : other.poll_interval,
         }
     }
     pub fn validate(&self) -> Result<(), ConfigError> {
