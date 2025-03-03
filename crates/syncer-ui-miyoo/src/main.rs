@@ -1,3 +1,5 @@
+use std::io;
+
 use embedded_graphics::{
     Drawable,
     draw_target::DrawTarget,
@@ -8,6 +10,8 @@ use embedded_graphics::{
 };
 use embedded_vintage_fonts::FONT_24X32;
 use miyoo_io::{InputReader, MiyooFramebuffer};
+use syncer_model::{commands::DaemonCommand, platforms::Platform};
+use tokio::{io::AsyncWriteExt, net::UnixStream};
 
 mod miyoo_io;
 
@@ -37,3 +41,23 @@ async fn async_main() {
     }
 }
 
+async fn install_daemon() -> Result<(), anyhow::Error> {
+    Err(anyhow::anyhow!("TODO"))
+}
+async fn uninstall_daemon() -> Result<(), anyhow::Error> {
+    Err(anyhow::anyhow!("TODO"))
+}
+
+pub struct DaemonSocket (UnixStream);
+
+impl DaemonSocket {
+    pub async fn new() -> Result<Self, io::Error> {
+        let platform = Platform::get();
+        let stream = UnixStream::connect(platform.socket_path()).await?;
+        Ok(Self(stream))
+    }
+    pub async fn send(&mut self, command : DaemonCommand) -> Result<(), io::Error> {
+        let command = command.serialize();
+        self.0.write_all(command.as_bytes()).await
+    }
+}

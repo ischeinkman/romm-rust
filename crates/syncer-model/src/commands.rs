@@ -21,6 +21,10 @@ impl DaemonCommand {
             body,
         }
     }
+
+    pub fn serialize(&self) -> String {
+        serde_json::to_string(&self).unwrap()
+    }
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
