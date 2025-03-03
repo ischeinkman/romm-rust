@@ -13,6 +13,7 @@ mod loading;
 use loading::{FlattenedList, ParseableDuration};
 
 use crate::path_format_strings::FormatString;
+use crate::platforms::Platform;
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -30,6 +31,10 @@ impl Config {
             system: self.system.join(other.system),
             romm: self.romm.join(other.romm),
         }
+    }
+    pub fn load_current_platform() -> Result<Self, anyhow::Error> {
+        let platform = Platform::get();
+        Self::load(platform.config_paths())
     }
     pub fn load(files: impl Iterator<Item = impl AsRef<Path>>) -> Result<Self, anyhow::Error> {
         let mut retvl = Self::default();
@@ -182,7 +187,7 @@ pub struct SystemConfig {
     pub database: Option<PathBuf>,
 
     /// How often the daemon should poll the host & server for changes.
-    pub poll_interval : ParseableDuration, 
+    pub poll_interval: ParseableDuration,
 }
 
 impl SystemConfig {
@@ -203,7 +208,7 @@ impl SystemConfig {
             database: other.database.or(self.database),
             deny,
             allow,
-            poll_interval : other.poll_interval,
+            poll_interval: other.poll_interval,
         }
     }
     pub fn validate(&self) -> Result<(), ConfigError> {

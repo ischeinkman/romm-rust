@@ -1725,6 +1725,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "syncer-ui-miyoo"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "buoyant",
+ "embedded-graphics",
+ "embedded-layout",
+ "embedded-text",
+ "embedded-vintage-fonts",
+ "evdev",
+ "futures",
+ "linuxfb",
+ "syncer-model",
+ "tokio",
+]
+
+[[package]]
 name = "synstructure"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

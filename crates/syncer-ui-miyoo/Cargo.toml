@@ -1,0 +1,18 @@
+[package]
+name = "syncer-ui-miyoo"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.95"
+buoyant = { version = "0.4.0-alpha.1", features = ["std"], git = "https://github.com/riley-williams/buoyant" }
+embedded-graphics = "0.8.1"
+embedded-layout = "0.4.1"
+embedded-text = "0.7.2"
+embedded-vintage-fonts = "0.2.0"
+evdev = { version = "0.13.0", features = ["tokio"] }
+futures = "0.3.31"
+linuxfb = "0.3.1"
+
+syncer-model = {path = "../syncer-model"}
+tokio = { version = "1.43.0", features = ["full"] }

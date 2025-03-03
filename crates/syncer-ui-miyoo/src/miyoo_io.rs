@@ -1,14 +1,13 @@
 use std::{io, path::Path};
 
 use embedded_graphics::{
+    Pixel,
     pixelcolor::Rgb888,
     prelude::{Dimensions, DrawTarget, Point, RgbColor, Size},
     primitives::Rectangle,
-    Pixel,
 };
 use evdev::{Device, EventStream, EventSummary, KeyCode};
 use linuxfb::{Framebuffer, PixelLayout};
-use tracing::warn;
 
 /// Wrapper around the Miyoo Mini's framebuffer.
 ///
@@ -203,8 +202,8 @@ impl InputReader {
             };
             let button: MiyooButton = match code.try_into() {
                 Ok(btn) => btn,
-                Err(e) => {
-                    warn!("Found unknown keycode: {e:?}");
+                Err(_e) => {
+                    //TODO: Log
                     continue;
                 }
             };
@@ -215,8 +214,8 @@ impl InputReader {
                     // Key repeat; not sure what counts, but we'll treat it as a press for now.
                     MiyooButtonEvent::Pressed
                 }
-                other => {
-                    warn!("Found unknown key event kind: {other}");
+                _other => {
+                    //TODO: log
                     continue;
                 }
             };

@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{path::Path, sync::Mutex};
 
 use migrations::{apply_migrations, MigrationError};
 use rusqlite::{params_from_iter, Connection};
@@ -9,13 +9,14 @@ use crate::{md5hash::Md5Hash, SaveMeta};
 mod migrations;
 
 pub struct SaveMetaDatabase {
-    con: Connection,
+    con: Mutex<Connection>,
 }
 
 impl SaveMetaDatabase {
     pub fn open(path: &Path) -> Result<Self, MigrationError> {
         let mut con = Connection::open(path).map_err(MigrationError::from_raw)?;
         apply_migrations(&mut con)?;
+        let con = Mutex::new(con);
         Ok(Self { con })
     }
 
@@ -23,6 +24,7 @@ impl SaveMetaDatabase {
     fn new_in_memory() -> Result<Self, MigrationError> {
         let mut con = Connection::open_in_memory().map_err(MigrationError::from_raw)?;
         apply_migrations(&mut con)?;
+        let con = Mutex::new(con);
         Ok(Self { con })
     }
 
@@ -43,7 +45,8 @@ impl SaveMetaDatabase {
         } else {
             &[rom, name]
         };
-        let mut stmt = self.con.prepare(&sql)?;
+        let con = self.con.lock().unwrap();
+        let mut stmt = con.prepare(&sql)?;
         let mut rows = stmt.query_map(params_from_iter(params), |row| {
             let name = row.get("name")?;
             let rom = row.get("rom")?;
@@ -97,7 +100,8 @@ ON CONFLICT DO UPDATE SET
     updated = ?6, 
     md5 = ?7,
     size = ?8"#;
-        let modified = self.con.execute(
+        let con = self.con.lock().unwrap();
+        let modified = con.execute(
             QUERY,
             (
                 &metadata.name,
