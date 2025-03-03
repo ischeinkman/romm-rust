@@ -1,6 +1,4 @@
-# Rust ROMM tools
+# romm-api
 
-Current crates:
-* [`romm-api`](romm-api) - Rust structs generated from the ROMM openapi spec. 
-* [`simple-manual-syncer`](simple-manual-syncer) - A tool for automatically
-  keeping the saves in-sync between your device and remote ROMM instance. 
+This crate holds simple structs for serializing & deserializing to & from the
+Romm API. No client or server code is included, just the basic structs. 
