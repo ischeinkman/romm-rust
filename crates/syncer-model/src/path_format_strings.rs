@@ -47,7 +47,9 @@ impl FormatString {
     ///
     /// # Examples
     /// ```rust
-    /// let fmt : FormatString = "$PREFIX-postpre-$MIDDLE-prepost-$SUFFIX.$EXT";
+    /// # use std::collections::HashMap;
+    /// # use syncer_model::path_format_strings::FormatString;
+    /// let fmt : FormatString = "$PREFIX-postpre-$MIDDLE-prepost-$SUFFIX.$EXT".into();
     /// let mut vars = HashMap::new();
     /// vars.insert("$PREFIX", "a");
     /// vars.insert("$MIDDLE", "b");
@@ -79,7 +81,12 @@ impl FormatString {
     /// # Example
     ///
     /// ```
-    /// let formats : &[FormatString] = &["/my/long/prefix/var-$SUFFIX", "/my/long/prefix/$PREFIX-var", "/my/long/prefix/$EMBEDDED/subdir"];
+    /// # use syncer_model::path_format_strings::FormatString;
+    /// let formats : &[FormatString] = &[
+    ///     "/my/long/prefix/var-$SUFFIX".into(),
+    ///     "/my/long/prefix/$PREFIX-var".into(),
+    ///     "/my/long/prefix/$EMBEDDED/subdir".into()
+    /// ];
     /// for fmt in formats {
     ///     assert_eq!(fmt.prefix(), "/my/long/prefix/");
     /// }
@@ -112,6 +119,8 @@ impl FormatString {
     /// # Examples
     ///
     /// ```rust
+    /// # use syncer_model::path_format_strings::FormatString;
+    /// # use std::path::Path;
     /// let format : FormatString = "/prefix/$EMULATOR/$ROM-$TIMESTAMP.$EXT".into();
     /// assert!(format.matches_path(Path::new("/prefix/my-emulator/my-rom-with-ts.sav")));
     /// assert!(!format.matches_path(Path::new("/prefix/my-emulator/my-rom-folder/my-rom-file.sav")));
@@ -125,6 +134,7 @@ impl FormatString {
     /// # Examples
     ///
     /// ```rust
+    /// # use syncer_model::path_format_strings::FormatString;
     /// let format : FormatString = "/prefix/$EMULATOR/$ROM-$TIMESTAMP.$EXT".into();
     /// assert!(format.matches("/prefix/my-emulator/my-rom-with-ts.sav"));
     /// assert!(!format.matches("/prefix/my-emulator/my-rom-folder/my-rom-file.sav"));
@@ -136,13 +146,15 @@ impl FormatString {
     ///
     /// # Examples
     /// ```rust
+    /// # use syncer_model::path_format_strings::*;
+    /// # use std::path::Path;
     /// let format : FormatString = "/long/prefix/$EMULATOR/$ROM.$EXT".into();
     /// let path = "/long/prefix/mgba/testrom.sav";
-    /// let resolved = resolve_metadata_variables(format, Path::new(path)).unwrap();
+    /// let resolved = format.resolve(Path::new(path)).unwrap();
     /// assert_eq!(resolved.len(), 3);
     /// assert_eq!(resolved.get("$EMULATOR").unwrap(), "mgba");
     /// assert_eq!(resolved.get("$ROM").unwrap(), "testrom");
-    /// assert_eq!(resolved.get("$EXT").unwrap(), "save");
+    /// assert_eq!(resolved.get("$EXT").unwrap(), "sav");
     /// ```
     pub fn resolve<'a, 'b>(
         &'a self,
@@ -211,7 +223,7 @@ pub enum MetadataResolveError<'a, 'b> {
 /// constants to be matched and `$`-prefixed variable names to be extracted.
 ///
 /// # Example
-/// ```rust
+/// ```ignore
 /// let format = "/long/prefix/root/$EMULATOR/$ROM.$EXT";
 /// let split = split_variable_portions(format).collect::<Vec<_>>();
 /// let expected = &["/long/prefix/root/", "$EMULATOR", "/", "$ROM", ".", "$EXT"];

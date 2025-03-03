@@ -77,6 +77,14 @@ where
 
 impl<T> Eq for FlattenedList<T> where T: Eq {}
 
+/// Helper for parsing a [`Duration`] from a number and a unit.
+///
+/// # Examples
+/// ```ignore
+/// # use syncer_model::config::loading::ParseableDuration;
+/// let duration : ParsableDuration = serde_json::from_str("2h").unwrap();
+/// assert_eq!(duration.as_nanos(), 60 * 60 * 1000 * 1000 * 1000);
+/// ```
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, PartialOrd, Ord)]
 pub struct ParseableDuration(Duration);
 

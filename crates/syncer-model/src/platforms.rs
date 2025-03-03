@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+/// Different platforms the ROMM sync tool supports, for deriving things like
+/// config & socket paths.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub enum Platform {
     MiyooMini,
@@ -38,6 +40,7 @@ impl Platform {
         Platform::default()
     }
 
+    /// The place(s) to look for the config file(s).
     pub fn config_paths(&self) -> impl Iterator<Item = &Path> {
         const MIYOO_PATHS: &[&str] = &["sync_config.toml"];
         const LINUX_PATHS: &[&str] = &[
@@ -52,6 +55,7 @@ impl Platform {
         raw.iter().map(Path::new)
     }
 
+    /// The place to open the named socket on the platform.
     pub fn socket_path(&self) -> PathBuf {
         match *self {
             Platform::MiyooMini => "daemon-socket.socket".into(),

@@ -5,6 +5,7 @@ use serde_json::Error as JsError;
 use serde_json::Value as JsValue;
 use thiserror::Error;
 
+/// The version of the daemon's RPC API.
 pub const VERSION: u32 = 1;
 
 #[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
