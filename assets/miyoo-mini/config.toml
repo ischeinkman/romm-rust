@@ -1,3 +1,20 @@
+[romm]
+# The URL of the remote ROMM server
+#
+# Must be set externally on the Miyoo Mini
+#url = ""
+
+# The Authorization header used to talk to the ROMM server
+#
+# Must be set externally on the Miyoo Mini
+#api-key = ""
+
+# The template used for finding saves to sync & pushing saves back to ROMM
+#
+# Usually fine to just use the default unless you prefer a different naming
+# scheme
+format = "$NAME-$TIMESTAMP.$EXT"
+
 [system]
 
 # Format string(s) describing where saves are & how to parse their names. 
@@ -8,42 +25,41 @@
 # * $ROM (defaults to $NAME)
 # * $EXT (filename extension) 
 # * $TIMESTAMP (defaults to the romm/filesystem provided update time)
+#
+# Note that this default format is the one the Miyoo Mini itself uses; you
+# probably don't want to change this!
 saves = [
     "/mnt/SDCARD/Saves/CurrentProfile/saves/$EMULATOR/$NAME.$EXT",
 ]
 
 # Should we skip hidden files in the save directories?
+#
+# On the Miyoo Mini this is generally a "yes", since some emulators store extra
+# non-save-file state in their save directories as hidden files/directories.
 skip_hidden = true 
 
 # Where should we put the local sync database, used for detecting conflicts? 
+#
+# On the Miyoo Mini this is relative to the application's folder. 
 database = "syncdb.sqlite"
 
 # A specific list of files/directories to sync. 
 #
 # If set, we will ONLY sync save files in these files/directories, and ONLY if
 # they also match the denylist and at least 1 of the entries in `saves`. 
+#
+# On the Miyoo Mini this is configurable via the UI.
 # allow = []
 
 # A specific list of files/directories to NOT sync. 
 #
 # If set, we will NOT sync save files in these files/directories, even if they
 # match both an entire in `saves` and an entry in the `allow` list.
+#
+# On the Miyoo Mini this is configurable via the UI.
 # deny = []
 
 # How often the daemon should check for any necessary resyncs
+#
+# Making this configurable via the Miyoo Mini UI is still TODO 
 poll_interval = "30m" 
-
-[romm]
-
-# The template used for finding saves to sync & pushing saves back to ROMM
-format = "$NAME-$TIMESTAMP.$EXT"
-
-# The URL of the remote ROMM server
-#
-# Can also be set via the ROMM_URL environment variable
-#url = ""
-
-# The Authorization header used to talk to the ROMM server
-#
-# Can also be set via the ROMM_API_KEY environment variable
-#api-key = ""
