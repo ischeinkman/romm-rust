@@ -1,2 +1,4 @@
 /target
 secrets.env
+.build
+.env
