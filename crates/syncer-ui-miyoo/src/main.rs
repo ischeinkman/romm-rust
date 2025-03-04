@@ -52,6 +52,7 @@ async fn async_main() {
 
     loop {
         let tree = ForEach::<2, _, _, _>::new(buttons, |&(idx, lbl)| {
+            println!("BTN: {lbl} {idx} {:?} {:?}", idx == selection, ons[idx]);
             labeled_checkbox(lbl, idx == selection, ons[idx])
         })
         .flex_frame()
@@ -80,6 +81,9 @@ async fn async_main() {
             (MiyooButton::A, MiyooButtonEvent::Released) => {
                 ons[selection] = !ons[selection];
             }
+            (MiyooButton::Menu, MiyooButtonEvent::Pressed) => {
+                break;
+            }
             _ => {}
         }
         fb.flush().unwrap();
@@ -94,7 +98,7 @@ fn labeled_checkbox(
     const HEIGHT: u16 = 32;
     const PADDING: u16 = 4;
     HStack::new((
-        Text::new(label, &FONT_24X32),
+        Text::new(label, &FONT_24X32).foreground_color(Rgb888::BLACK),
         Spacer::default(),
         checkbox(is_selected, is_on),
     ))
@@ -118,7 +122,7 @@ fn checkbox(is_selected: bool, is_on: bool) -> impl EmbeddedGraphicsView<Rgb888>
     let upper_rect = Rectangle
         .foreground_color(color)
         .padding(Edges::All, padding);
-    ZStack::new((upper_rect, lower_rect))
+    ZStack::new((lower_rect, upper_rect))
         .frame()
         .with_width(WIDTH)
         .with_height(HEIGHT)
