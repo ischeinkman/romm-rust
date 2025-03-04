@@ -67,7 +67,7 @@ fn init_logger() {
 #[tracing::instrument]
 async fn async_main() {
     let args = std::env::args().collect::<Vec<_>>();
-    let cfg = Config::load(args.into_iter().skip(1)).unwrap();
+    let cfg = Config::load(args.into_iter().skip(1)).await.unwrap();
     let db = SaveMetaDatabase::open(cfg.system.database.as_deref().unwrap()).unwrap();
     info!("Starting with config: {cfg:?}");
     let cl = RommClient::new(
@@ -110,14 +110,17 @@ impl DaemonState {
                 self.sync_trigger.trigger();
             }
             DaemonCommandBody::ReloadConfig => {
-                let cfg = match load_config() {
-                    Ok(cfg) => cfg,
-                    Err(e) => {
-                        error!("Error reloading config: {e:?}");
-                        return;
-                    }
-                };
-                self.sync_loop_sleep.set(*cfg.system.poll_interval);
+                let sync_loop_sleep = self.sync_loop_sleep.clone();
+                tokio::task::spawn(async move {
+                    let cfg = match load_config().await {
+                        Ok(cfg) => cfg,
+                        Err(e) => {
+                            error!("Error reloading config: {e:?}");
+                            return;
+                        }
+                    };
+                    sync_loop_sleep.set(*cfg.system.poll_interval);
+                });
             }
         }
     }
@@ -151,14 +154,14 @@ fn build_sync_actor_thread() -> (EventTrigger, JoinHandle<()>) {
     (snd, thread)
 }
 
-fn load_config() -> Result<Config, anyhow::Error> {
-    let cfg = Config::load(Platform::get().config_input_paths())?;
+async fn load_config() -> Result<Config, anyhow::Error> {
+    let cfg = Config::load(Platform::get().config_input_paths()).await?;
     cfg.validate()?;
     Ok(cfg)
 }
 
 async fn do_sync() -> Result<(), anyhow::Error> {
-    let cfg = load_config()?;
+    let cfg = load_config().await?;
     let db = SaveMetaDatabase::open(cfg.system.database.as_deref().unwrap())?;
     info!("Performing sync.");
     debug!("Performing sync with config: {cfg:?}");

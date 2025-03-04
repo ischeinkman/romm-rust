@@ -1,12 +1,12 @@
-use std::fs::File;
 use std::hash::Hash;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::{env, fmt::Debug};
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use tokio::fs::File;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use url::Url;
 
 mod loading;
@@ -32,31 +32,64 @@ impl Config {
             romm: self.romm.join(other.romm),
         }
     }
-    pub fn load_current_platform() -> Result<Self, anyhow::Error> {
+    pub async fn load_current_platform() -> Result<Self, anyhow::Error> {
         let platform = Platform::get();
-        Self::load(platform.config_input_paths())
+        Self::load(platform.config_input_paths()).await
     }
-    pub fn load(files: impl Iterator<Item = impl AsRef<Path>>) -> Result<Self, anyhow::Error> {
+    pub async fn save_current_platform(&self) -> Result<(), anyhow::Error> {
+        self.save(Platform::get().config_save_path()).await
+    }
+    pub async fn save(&self, path: impl AsRef<Path>) -> Result<(), anyhow::Error> {
+        let path = path.as_ref();
+        let ext = path
+            .extension()
+            .map(|raw| raw.to_string_lossy())
+            .unwrap_or_default();
+        let payload = match &*ext {
+            "toml" => toml::to_string_pretty(&self)?,
+            "json" => serde_json::to_string_pretty(&self)?,
+            "" => toml::to_string_pretty(&self)?,
+            other => {
+                return Err(anyhow::anyhow!("Unsupported config file extention {other}"));
+            }
+        };
+        let mut fh = File::create(path).await?;
+        fh.write_all(payload.as_bytes()).await?;
+        Ok(())
+    }
+    pub async fn load(
+        files: impl Iterator<Item = impl AsRef<Path>>,
+    ) -> Result<Self, anyhow::Error> {
         let mut retvl = Self::default();
         for file in files {
             let file = file.as_ref();
-            let mut fh =
-                File::open(file).with_context(|| format!("Error opening config file {file:?}."))?;
+            let mut fh = File::open(file)
+                .await
+                .with_context(|| format!("Error opening config file {file:?}."))?;
             let ext = file.extension().map(|s| s.to_string_lossy());
             let ext = ext.as_ref().map(|s| s.as_ref());
             let parsed = match ext {
                 Some("toml") => {
                     let mut data = String::new();
                     fh.read_to_string(&mut data)
+                        .await
                         .with_context(|| format!("Error reading data from TOML file {file:?}."))?;
                     toml::from_str(&data)
                         .with_context(|| format!("Error parsing TOML file {file:?}."))?
                 }
-                Some("json") => serde_json::from_reader(fh)
-                    .with_context(|| format!("Error parsing JSON file {file:?}."))?,
+                Some("json") => {
+                    let mut data = String::new();
+                    fh.read_to_string(&mut data)
+                        .await
+                        .with_context(|| format!("Error reading data from JSON file {file:?}."))?;
+
+                    serde_json::from_str(&data)
+                        .with_context(|| format!("Error parsing JSON file {file:?}."))?
+                }
                 _ => {
                     let mut data = String::new();
                     fh.read_to_string(&mut data)
+                        .await
                         .with_context(|| format!("Error reading data from TOML file {file:?}."))?;
                     toml::from_str(&data)
                         .with_context(|| format!("Error parsing TOML file {file:?}."))?
