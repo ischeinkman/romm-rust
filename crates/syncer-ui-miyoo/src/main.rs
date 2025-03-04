@@ -21,6 +21,7 @@ use miyoo_io::{InputReader, MiyooButton, MiyooButtonEvent, MiyooFramebuffer};
 use syncer_model::{commands::DaemonCommand, platforms::Platform};
 use tokio::{io::AsyncWriteExt, net::UnixStream};
 
+mod daemon;
 mod miyoo_io;
 
 fn main() {
@@ -83,13 +84,6 @@ async fn async_main() {
         }
         fb.flush().unwrap();
     }
-}
-
-async fn install_daemon() -> Result<(), anyhow::Error> {
-    Err(anyhow::anyhow!("TODO"))
-}
-async fn uninstall_daemon() -> Result<(), anyhow::Error> {
-    Err(anyhow::anyhow!("TODO"))
 }
 
 fn labeled_checkbox(
