@@ -25,6 +25,7 @@ mod daemon;
 mod miyoo_io;
 
 fn main() {
+    verify_platform();
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -39,6 +40,13 @@ fn with_idx<T, const N: usize>(base: [T; N]) -> [(usize, T); N] {
         idx += 1;
         (nxt, itm)
     })
+}
+
+fn verify_platform() {
+    let platform = Platform::get();
+    if platform != Platform::MiyooMiniOnion {
+        panic!("Can only run on Onion OS on the Miyoo Mini, but we're on {platform:?}");
+    }
 }
 
 async fn async_main() {
