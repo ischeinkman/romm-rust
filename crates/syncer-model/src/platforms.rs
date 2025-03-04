@@ -24,7 +24,24 @@ impl Platform {
 
     #[cfg(all(target_os = "linux", target_arch = "arm", target_abi = "eabihf"))]
     pub fn get() -> Self {
-        Platform::MiyooMini
+        use std::sync::LazyLock;
+
+        // Wrap this in a `LazyLock` so we only need to do the check once
+        static CACHE : LazyLock<Platform> = LazyLock::new(|| {
+            // TODO: Detect this properly
+            //
+            // NOTES: 
+            // * The Miyoo Mini doesn't have any standard OS detection systems
+            //   (/etc/os-release, uname, etc)
+            // * The Miyoo Mini doesn't have any info under /sys referencing
+            //   itself
+            // * The only thing I could find currently is a `/etc/fw_printenv`
+            //   program that seems to print out environment variables for ...
+            //   something, some of which do indeed reference the fact that its
+            //   running on a Miyoo Mini
+            Platform::MiyooMini
+        });
+        *CACHE
     }
 
     #[cfg(all(
