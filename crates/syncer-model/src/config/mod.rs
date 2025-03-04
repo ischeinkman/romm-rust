@@ -34,7 +34,7 @@ impl Config {
     }
     pub fn load_current_platform() -> Result<Self, anyhow::Error> {
         let platform = Platform::get();
-        Self::load(platform.config_paths())
+        Self::load(platform.config_input_paths())
     }
     pub fn load(files: impl Iterator<Item = impl AsRef<Path>>) -> Result<Self, anyhow::Error> {
         let mut retvl = Self::default();

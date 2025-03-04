@@ -1,4 +1,4 @@
-use std::{env, path::Path, time::Duration};
+use std::{env, time::Duration};
 
 use futures::TryStreamExt;
 use tokio::{io::AsyncReadExt, net::UnixListener, task::JoinHandle};
@@ -24,13 +24,6 @@ mod syncing;
 use syncing::run_sync;
 use utils::{ConfigurableSleep, ConfigurableSleepSetter, EventTrigger};
 mod utils;
-
-const CONFIG_PATHS: &[&str] = &[
-    // Miyoo mini -- next to the binary
-    "sync_config.toml",
-    // Linux
-    "~/.config/simply-manual-syncer/config.toml",
-];
 
 fn main() {
     init_logger();
@@ -159,7 +152,7 @@ fn build_sync_actor_thread() -> (EventTrigger, JoinHandle<()>) {
 }
 
 fn load_config() -> Result<Config, anyhow::Error> {
-    let cfg = Config::load(CONFIG_PATHS.iter())?;
+    let cfg = Config::load(Platform::get().config_input_paths())?;
     cfg.validate()?;
     Ok(cfg)
 }
