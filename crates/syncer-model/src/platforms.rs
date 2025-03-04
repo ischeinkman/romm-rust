@@ -27,10 +27,10 @@ impl Platform {
         use std::sync::LazyLock;
 
         // Wrap this in a `LazyLock` so we only need to do the check once
-        static CACHE : LazyLock<Platform> = LazyLock::new(|| {
+        static CACHE: LazyLock<Platform> = LazyLock::new(|| {
             // TODO: Detect this properly
             //
-            // NOTES: 
+            // NOTES:
             // * The Miyoo Mini doesn't have any standard OS detection systems
             //   (/etc/os-release, uname, etc)
             // * The Miyoo Mini doesn't have any info under /sys referencing

@@ -7,7 +7,8 @@ use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
 
 use syncer_model::{
     commands::{DaemonCommand, DaemonCommandBody},
-    config::Config, platforms::Platform,
+    config::Config,
+    platforms::Platform,
 };
 
 mod database;
@@ -177,15 +178,12 @@ async fn do_sync() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-
 pub async fn open_command_stream() -> Result<(), anyhow::Error> {
     let socket_pt = Platform::get().socket_path();
     let listener = UnixListener::bind(socket_pt)?;
 
     let connection_stream = futures::stream::poll_fn(move |cx| listener.poll_accept(cx).map(Some))
-    .map_ok(|(con, _)| {
-        
-    });
+        .map_ok(|(con, _)| {});
 
     todo!()
 }
