@@ -56,7 +56,7 @@ impl ViewState for SavelistState<'_> {
         futures::future::ready(Ok(()))
     }
     fn down(&mut self) -> impl Future<Output = Result<(), anyhow::Error>> + '_ {
-        self.selected = self.saves.len().min(self.selected + 1);
+        self.selected = (self.saves.len() - 1).min(self.selected + 1);
         futures::future::ready(Ok(()))
     }
     async fn press(&mut self) -> Result<(), anyhow::Error> {
