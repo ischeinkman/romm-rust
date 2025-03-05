@@ -129,7 +129,7 @@ impl ViewState for SavelistState<'_> {
         Ok(())
     }
     fn build_view(&self) -> impl EmbeddedGraphicsView<Rgb888> + Layout + Clone + '_ {
-        const PER_SCREEN: usize = 7;
+        const PER_SCREEN: usize = 10;
         const SPACING: u16 = 4;
         const MAX_CHARACTERS_PER_BUTTON: usize = 24;
 
