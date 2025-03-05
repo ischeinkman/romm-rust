@@ -1,3 +1,6 @@
+//! The protocol used to communicate between the daemon and different UI crates
+//! while the daemon is running.
+
 use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
@@ -8,8 +11,11 @@ use thiserror::Error;
 /// The version of the daemon's RPC API.
 pub const VERSION: u32 = 1;
 
+/// A command an external program (such as a UI) can send to the daemon while
+/// the daemon is running.
 #[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
 pub struct DaemonCommand {
+    /// The version of the protocol being used.
     pub version: u32,
     #[serde(flatten)]
     pub body: DaemonCommandBody,

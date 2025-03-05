@@ -1,3 +1,5 @@
+//! Template strings for use in building & parsing paths via metadata.
+
 use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::hash::Hash;

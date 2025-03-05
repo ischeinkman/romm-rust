@@ -1,3 +1,5 @@
+//! User-editable configuration for the application.
+
 use std::hash::Hash;
 use std::path::{Path, PathBuf};
 use std::{env, fmt::Debug};
@@ -16,6 +18,7 @@ mod save_finding;
 use crate::path_format_strings::FormatString;
 use crate::platforms::Platform;
 
+/// User-editable configuration for the application.
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -27,19 +30,29 @@ pub struct Config {
 }
 
 impl Config {
+    /// Combines this config with another, prioritizing options set in `other`
+    /// over `self` if an option is set in both.
     pub fn join(self, other: Self) -> Self {
         Self {
             system: self.system.join(other.system),
             romm: self.romm.join(other.romm),
         }
     }
+
+    /// Reads the config from the default location(s) for this platform.
     pub async fn load_current_platform() -> Result<Self, anyhow::Error> {
         let platform = Platform::get();
         Self::load(platform.config_input_paths()).await
     }
+
+    /// Writes this config to the default location for this platform.
     pub async fn save_current_platform(&self) -> Result<(), anyhow::Error> {
         self.save(Platform::get().config_save_path()).await
     }
+
+    /// Writes this config to the given path.
+    ///
+    /// The file format is based on the extention of the path.
     pub async fn save(&self, path: impl AsRef<Path>) -> Result<(), anyhow::Error> {
         let path = path.as_ref();
         let ext = path
@@ -58,6 +71,10 @@ impl Config {
         fh.write_all(payload.as_bytes()).await?;
         Ok(())
     }
+
+    /// Builds a config from the given config file paths.
+    ///
+    /// Later configs in the iterator overwrite earlier values.
     pub async fn load(
         files: impl Iterator<Item = impl AsRef<Path>>,
     ) -> Result<Self, anyhow::Error> {
@@ -103,6 +120,8 @@ impl Config {
         retvl.validate()?;
         Ok(retvl)
     }
+    /// Checks for any consistency errors in this config, such as missing
+    /// required fields or a field having a value of the wrong format.
     pub fn validate(&self) -> Result<(), ConfigError> {
         self.romm.validate()?;
         self.system.validate()?;
@@ -146,6 +165,12 @@ fn is_true(b: &bool) -> bool {
 }
 
 impl RommConfig {
+    /// Reads config options from environment variables.
+    ///
+    /// Currently, these are:
+    ///
+    /// * `$ROMM_URL` -- `self.romm_url`
+    /// * `$ROMM_API_KEY` -- `self.api_key`
     pub fn from_env() -> Result<Self, anyhow::Error> {
         let url = env::var_os("ROMM_URL")
             .map(|s| s.into_string())
@@ -168,6 +193,9 @@ impl RommConfig {
             format: None,
         })
     }
+
+    /// Checks for any consistency errors in this config, such as missing
+    /// required fields or a field having a value of the wrong format.
     pub fn validate(&self) -> Result<(), ConfigError> {
         self.url
             .as_ref()
@@ -180,6 +208,8 @@ impl RommConfig {
 }
 
 impl RommConfig {
+    /// Combines this config with another, prioritizing options set in `other`
+    /// over `self` if an option is set in both.
     pub fn join(self, other: Self) -> Self {
         Self {
             url: other.url.or(self.url),
@@ -225,6 +255,8 @@ pub struct SystemConfig {
 }
 
 impl SystemConfig {
+    /// Combines this config with another, prioritizing options set in `other`
+    /// over `self` if an option is set in both.
     pub fn join(self, other: Self) -> Self {
         let mut deny = other.deny;
         deny.extend(self.deny);
@@ -245,6 +277,9 @@ impl SystemConfig {
             poll_interval: other.poll_interval,
         }
     }
+
+    /// Checks for any consistency errors in this config, such as missing
+    /// required fields or a field having a value of the wrong format.
     pub fn validate(&self) -> Result<(), ConfigError> {
         if self.saves.is_empty() {
             return Err(ConfigError::MissingField("system.saves"));

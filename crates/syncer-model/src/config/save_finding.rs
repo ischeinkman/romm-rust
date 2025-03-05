@@ -18,7 +18,7 @@ impl Config {
     /// * The variables pulled from the path string based on that format string
     pub fn possible_saves(
         &self,
-    ) -> impl Stream<Item= Result<(PathBuf, &FormatString, HashMap<String, String>), io::Error>> + '_
+    ) -> impl Stream<Item = Result<(PathBuf, &FormatString, HashMap<String, String>), io::Error>> + '_
     {
         let skip_hidden = self.system.skip_hidden;
         let full_tree = stream::iter(self.save_roots())
@@ -77,6 +77,12 @@ impl Config {
         })
     }
 
+    /// Finds the list of static directories that could possibly contain saves
+    /// we need to sync.
+    ///
+    /// In other words, takes each value in the `saves` list and takes the
+    /// longest subpath we can before we hit a component containing a
+    /// `$VARIABLE`.
     pub fn save_roots(&self) -> impl Iterator<Item = PathBuf> + '_ {
         let all_fmts = self.system.saves.as_slice().iter();
         let possible = all_fmts.map(|s| s.prefix()).map(PathBuf::from);
