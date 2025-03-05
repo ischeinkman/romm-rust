@@ -1685,6 +1685,7 @@ dependencies = [
  "futures",
  "linuxfb",
  "syncer-model",
+ "thiserror",
  "tokio",
 ]
 
