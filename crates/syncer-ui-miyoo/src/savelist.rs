@@ -8,7 +8,9 @@ use embedded_graphics::pixelcolor::Rgb888;
 use futures::{StreamExt, TryFutureExt, TryStreamExt};
 use syncer_model::config::Config;
 
-use crate::{ViewState, labeled_checkbox, utils::ForEachDyn};
+use crate::ViewState;
+use crate::components::labeled_checkbox;
+use crate::utils::ForEachDyn;
 
 pub struct SavelistState<'a> {
     saves: Vec<String>,

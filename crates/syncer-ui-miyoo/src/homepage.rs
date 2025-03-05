@@ -5,11 +5,9 @@ use buoyant::{
 };
 use embedded_graphics::pixelcolor::Rgb888;
 
-use crate::{
-    ViewState, button,
-    daemon::{daemon_is_installed, install_daemon, reinstall_daemon, uninstall_daemon},
-    labeled_checkbox,
-};
+use crate::ViewState;
+use crate::components::{button, labeled_checkbox};
+use crate::daemon::{daemon_is_installed, install_daemon, reinstall_daemon, uninstall_daemon};
 
 pub struct HomepageState {
     daemon_installed: bool,
