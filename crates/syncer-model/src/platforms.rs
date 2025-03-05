@@ -51,7 +51,7 @@ impl Platform {
 
     /// The place(s) to look for the config file(s).
     pub fn config_input_paths(&self) -> impl Iterator<Item = &Path> {
-        const MIYOO_PATHS: &[&str] = &["sync_config.toml"];
+        const MIYOO_PATHS: &[&str] = &["config.toml"];
         const LINUX_PATHS: &[&str] = &[
             "/etc/romm-syncer/config.toml",
             "~/.config/romm-syncer/config.toml",
@@ -66,7 +66,7 @@ impl Platform {
 
     pub fn config_save_path(&self) -> &Path {
         match self {
-            Platform::MiyooMiniOnion => Path::new("sync_config.toml"),
+            Platform::MiyooMiniOnion => Path::new("config.toml"),
             Platform::Linux => Path::new("~/.config.romm-syncer/config.toml"),
             _ => todo!("Platform not yet supported"),
         }
