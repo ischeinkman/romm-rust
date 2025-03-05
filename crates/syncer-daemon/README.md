@@ -1,25 +1,7 @@
-# Simple Romm Syncer
+# syncer-daemon
 
-An **IN PROGRESS** tool for syncing saves between the local device and a remote ROMM server.
+This is the daemon that continuosly runs on the local device to push & pull saves as needed. 
 
-## Progress
-
-- [x] Romm integration
-- [x] Syncing between local saves & Romm server
-- [x] Continous syncing in the background (**UNTESTED**)
-- [ ] Miyoo Mini UI
-- [ ] Desktop UI
-
-## Components
-
-* `syncer-daemon` -- A program that sits in the background syncing saves between
-  the device and external Romm server periodically based on the configured
-  parameters.
-* `syncer-ui-miyoo` -- The UI for configuring the save syncing daemon on the
-  Miyoo Mini.
-* `syncer-model` -- The base communication code used to keep the daemon & all UIs in sync.
-* `romm-api` -- A crate containing the structs needed to interact with Romm's
-  REST API.
 
 ## Sync logic
 
