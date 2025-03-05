@@ -16,7 +16,7 @@ fi
 
 pushd "$SYNCER_ROOT"
 
-if [ ! -d "./syncer-daemon" ]; then 
+if [ ! -f "./syncer-daemon" ]; then 
     echo "ERROR: Daemon not found."
     exit -1 
 fi
