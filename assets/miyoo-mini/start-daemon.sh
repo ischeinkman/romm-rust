@@ -14,7 +14,7 @@ if [ ! -d "$SYNCER_ROOT" ]; then
     exit -1;
 fi
 
-pushd "$SYNCER_ROOT"
+cd "$SYNCER_ROOT"
 
 if [ ! -f "./syncer-daemon" ]; then 
     echo "ERROR: Daemon not found."
@@ -22,7 +22,3 @@ if [ ! -f "./syncer-daemon" ]; then
 fi
 
 ./syncer-daemon > "$SYNCER_ROOT/daemon.out" 2> "$SYNCER_ROOT/daemon.err" & 
-
-popd
-
-
