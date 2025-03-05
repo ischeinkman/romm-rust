@@ -20,5 +20,6 @@ if [ ! -f "./syncer-daemon" ]; then
     echo "ERROR: Daemon not found."
     exit -1 
 fi
-
+export NO_COLOR=1
+export ROM_SYNC_LOG=trace 
 ./syncer-daemon > "$SYNCER_ROOT/daemon.out" 2> "$SYNCER_ROOT/daemon.err" & 
