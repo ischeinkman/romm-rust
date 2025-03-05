@@ -6,8 +6,9 @@ use buoyant::{
 use embedded_graphics::pixelcolor::Rgb888;
 
 use crate::{
-    ViewState, button, checkbox,
+    ViewState, button,
     daemon::{daemon_is_installed, install_daemon, reinstall_daemon, uninstall_daemon},
+    labeled_checkbox,
 };
 
 pub struct HomepageState {
@@ -104,10 +105,12 @@ impl ViewState for HomepageState {
             }
             Nothing => {}
         }
+        self.pressed = false;
         Ok(())
     }
     fn build_view(&self) -> impl EmbeddedGraphicsView<Rgb888> + Layout + Clone + '_ {
-        let installed_box = checkbox(
+        let installed_box = labeled_checkbox(
+            "Daemon installed",
             self.selection == HomePageSelection::DaemonInstalledBox,
             self.daemon_installed,
         );
