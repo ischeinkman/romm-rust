@@ -18,7 +18,7 @@ package-miyoo: build-miyoo
     fi 
     if [ -z "$ROMM_API_KEY" ]; 
         then echo "WARNING: $ROMM_API_KEY not set; add to the config manually." >&2; 
-        else sed -i "s%.*\$ROMM_API_KEY.*%api-key = \"$ROMM_API_KEY\"%" .build/miyoo-mini/config.toml
+        else sed -i "s%.*\$ROMM_API_KEY.*%api_key = \"$ROMM_API_KEY\"%" .build/miyoo-mini/config.toml
     fi 
     echo "Finished building the package under /.build/miyoo-mini"
 
