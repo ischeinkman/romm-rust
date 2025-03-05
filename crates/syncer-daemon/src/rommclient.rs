@@ -111,7 +111,9 @@ impl RommClient {
             .map(|fmt| meta.meta.output_target(fmt))
             .unwrap_or_else(|| format!("{}.{}", meta.meta.name, meta.meta.ext));
 
-        let form = Form::new().part("saves", Part::file(save).await?.file_name(target));
+        let part = Part::file(save).await?.file_name(target);
+        debug!("Pushing file to remote: {part:?}");
+        let form = Form::new().part("saves", part);
         self.raw.raw_post_form(&ep, form).await?;
         info!("Finished save upload.");
         Ok(())
