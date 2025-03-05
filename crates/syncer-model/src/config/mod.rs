@@ -11,6 +11,7 @@ use url::Url;
 
 mod loading;
 use loading::{FlattenedList, ParseableDuration};
+mod save_finding;
 
 use crate::path_format_strings::FormatString;
 use crate::platforms::Platform;

@@ -145,7 +145,7 @@ checksum = "1628fb46dfa0b37568d12e5edd512553eccf6a22a78e8bde00bb4aed84d5bdbf"
 [[package]]
 name = "buoyant"
 version = "0.4.0-alpha.2"
-source = "git+https://github.com/riley-williams/buoyant#e281d08cbd2678b2a29005f5f939d57434ca1074"
+source = "git+https://github.com/riley-williams/buoyant#f30120d72601b1d7044803507d447f26a0c56481"
 dependencies = [
  "embedded-graphics",
  "embedded-graphics-core",

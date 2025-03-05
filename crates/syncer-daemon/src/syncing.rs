@@ -11,7 +11,6 @@ use crate::{
     deviceclient::DeviceMeta,
     model::SaveMeta,
     rommclient::{RommClient, RommError, RommSaveMeta},
-    save_finding::possible_saves,
 };
 
 pub async fn run_sync(
@@ -20,7 +19,7 @@ pub async fn run_sync(
     db: &SaveMetaDatabase,
 ) -> Result<(), anyhow::Error> {
     let results =
-        possible_saves(cfg)
+        cfg.possible_saves()
             .map_err(anyhow::Error::from)
             .and_then(|(save, fmt, vars)| async move {
                 let mut device_meta = DeviceMeta::from_path(save.as_ref()).await?;

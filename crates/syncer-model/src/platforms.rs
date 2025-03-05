@@ -28,10 +28,9 @@ impl Platform {
 
         // Wrap this in a `LazyLock` so we only need to do the check once
         static CACHE: LazyLock<Platform> = LazyLock::new(|| {
-            if std::fs::exists("/mnt/SDCARD/.tmp_update/onionVersion") == Ok(true) {
-                Platform::MiyooMiniOnion
-            } else {
-                Platform::Linux
+            match std::fs::exists("/mnt/SDCARD/.tmp_update/onionVersion") {
+                Ok(true) => Platform::MiyooMiniOnion, 
+                _ => Platform::Linux,
             }
         });
         *CACHE

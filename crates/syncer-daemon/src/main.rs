@@ -1,7 +1,6 @@
 use std::{env, time::Duration};
 
-use futures::TryStreamExt;
-use tokio::{io::AsyncReadExt, net::UnixListener, task::JoinHandle};
+use tokio::task::JoinHandle;
 use tracing::{debug, error, info, level_filters::LevelFilter};
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
 
@@ -18,7 +17,6 @@ mod rommclient;
 use rommclient::RommClient;
 mod deviceclient;
 mod model;
-mod save_finding;
 use model::SaveMeta;
 mod syncing;
 use syncing::run_sync;
@@ -26,6 +24,11 @@ use utils::{ConfigurableSleep, ConfigurableSleepSetter, EventTrigger};
 mod utils;
 
 fn main() {
+    let args = std::env::args().collect::<Vec<_>>();
+    if args.iter().any(|s| s == "--version") {
+        println!("{}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
     init_logger();
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -66,8 +69,7 @@ fn init_logger() {
 #[allow(unused)]
 #[tracing::instrument]
 async fn async_main() {
-    let args = std::env::args().collect::<Vec<_>>();
-    let cfg = Config::load(args.into_iter().skip(1)).await.unwrap();
+    let cfg = load_config().await.unwrap();
     let db = SaveMetaDatabase::open(cfg.system.database.as_deref().unwrap()).unwrap();
     info!("Starting with config: {cfg:?}");
     let cl = RommClient::new(
@@ -172,14 +174,4 @@ async fn do_sync() -> Result<(), anyhow::Error> {
 
     run_sync(&cfg, &cl, &db).await?;
     Ok(())
-}
-
-pub async fn open_command_stream() -> Result<(), anyhow::Error> {
-    let socket_pt = Platform::get().socket_path();
-    let listener = UnixListener::bind(socket_pt)?;
-
-    let connection_stream = futures::stream::poll_fn(move |cx| listener.poll_accept(cx).map(Some))
-        .map_ok(|(con, _)| {});
-
-    todo!()
 }
