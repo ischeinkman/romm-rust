@@ -6,7 +6,10 @@ use buoyant::{
     primitives::{Point, Size},
     render::{EmbeddedGraphicsRender, EmbeddedGraphicsView, Renderable},
     view::{
-        match_view::{Branch2, MatchView}, padding::Edges, shape::Rectangle, HStack, LayoutExtensions, RenderExtensions, Text, ZStack
+        HStack, LayoutExtensions, RenderExtensions, Text, ZStack,
+        match_view::{Branch2, MatchView},
+        padding::Edges,
+        shape::Rectangle,
     },
 };
 use embedded_graphics::{

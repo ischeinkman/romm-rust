@@ -63,7 +63,7 @@ where
     }
 }
 
-impl <S, V> Eq for ForEachDyn<S, V> where S : Eq + AsRef<[V]> {}
+impl<S, V> Eq for ForEachDyn<S, V> where S: Eq + AsRef<[V]> {}
 
 impl<I: AsRef<[V]>, V: Layout> ForEachDyn<I, V> {
     pub fn new(iter: I) -> Self {
