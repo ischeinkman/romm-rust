@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    borrow::Cow,
+    path::{Path, PathBuf},
+};
 
 use buoyant::{layout::Layout, render::EmbeddedGraphicsView};
 use embedded_graphics::pixelcolor::Rgb888;
@@ -77,71 +80,82 @@ impl ViewState for SavelistState<'_> {
             };
             self.cfg.system.allow = new_allow;
             self.cfg.system.deny = new_deny;
-            self.cfg.save_current_platform().await?;
-            //TODO: signal the daemon via the domain socket
-            return Ok(());
-        }
+        } else {
+            let prev_enabled = is_enabled(self.cfg, Path::new(&self.saves[self.selected]));
 
-        let prev_enabled = is_enabled(self.cfg, Path::new(&self.saves[self.selected]));
-
-        if prev_enabled {
-            if let Some(allow) = self.cfg.system.allow.as_mut() {
-                if let Some(prev_idx) = allow
-                    .iter()
-                    .position(|pt| pt.ends_with(&self.saves[self.selected]))
-                {
-                    allow.remove(prev_idx);
+            if prev_enabled {
+                if let Some(allow) = self.cfg.system.allow.as_mut() {
+                    if let Some(prev_idx) = allow
+                        .iter()
+                        .position(|pt| pt.ends_with(&self.saves[self.selected]))
+                    {
+                        allow.remove(prev_idx);
+                    }
                 }
-            }
-            if !self
-                .cfg
-                .system
-                .deny
-                .iter()
-                .any(|pt| pt.ends_with(&self.saves[self.selected]))
-            {
-                self.cfg
+                if !self
+                    .cfg
                     .system
                     .deny
-                    .push(PathBuf::from(&self.saves[self.selected]));
-            }
-        } else {
-            if let Some(allow) = self.cfg.system.allow.as_mut() {
-                if !allow
                     .iter()
                     .any(|pt| pt.ends_with(&self.saves[self.selected]))
                 {
-                    allow.push(PathBuf::from(&self.saves[self.selected]));
+                    self.cfg
+                        .system
+                        .deny
+                        .push(PathBuf::from(&self.saves[self.selected]));
+                }
+            } else {
+                if let Some(allow) = self.cfg.system.allow.as_mut() {
+                    if !allow
+                        .iter()
+                        .any(|pt| pt.ends_with(&self.saves[self.selected]))
+                    {
+                        allow.push(PathBuf::from(&self.saves[self.selected]));
+                    }
+                }
+                if let Some(prev_idx) = self
+                    .cfg
+                    .system
+                    .deny
+                    .iter()
+                    .position(|pt| pt.ends_with(&self.saves[self.selected]))
+                {
+                    self.cfg.system.deny.remove(prev_idx);
                 }
             }
-            if let Some(prev_idx) = self
-                .cfg
-                .system
-                .deny
-                .iter()
-                .position(|pt| pt.ends_with(&self.saves[self.selected]))
-            {
-                self.cfg.system.deny.remove(prev_idx);
-            }
         }
+        //TODO: signal the daemon via the domain socket
+        self.cfg.save_current_platform().await?;
         Ok(())
     }
     fn build_view(&self) -> impl EmbeddedGraphicsView<Rgb888> + Layout + Clone + '_ {
         const PER_SCREEN: usize = 7;
         const SPACING: u16 = 4;
+        const MAX_CHARACTERS_PER_BUTTON: usize = 24;
 
-        let skip = self.selected.saturating_sub(PER_SCREEN);
+        let skip = self.selected.saturating_sub(PER_SCREEN - 1);
         let boxes = self
             .saves
             .iter()
             .enumerate()
             .map(|(idx, label)| {
-                let is_on = if label == "[default]" {
-                    self.cfg.system.allow.is_none()
+                let is_on = is_enabled(self.cfg, Path::new(&label));
+
+                let num_chars = label.chars().count();
+                let label_trunc = if num_chars <= MAX_CHARACTERS_PER_BUTTON {
+                    Cow::Borrowed(label.as_str())
                 } else {
-                    is_enabled(self.cfg, Path::new(&label))
+                    let to_skip = num_chars - MAX_CHARACTERS_PER_BUTTON;
+                    let mapped = label
+                        .chars()
+                        .skip(to_skip)
+                        .fold(String::new(), |mut acc, cur| {
+                            acc.push(cur);
+                            acc
+                        });
+                    Cow::Owned(mapped)
                 };
-                labeled_checkbox(label, self.selected == idx, is_on)
+                labeled_checkbox(label_trunc, self.selected == idx, is_on)
             })
             .skip(skip)
             .take(PER_SCREEN)
@@ -151,6 +165,9 @@ impl ViewState for SavelistState<'_> {
 }
 
 fn is_enabled(cfg: &Config, path: &Path) -> bool {
+    if path.to_str() == Some("[default]") {
+        return cfg.system.allow.is_none();
+    }
     if let Some(allow) = cfg.system.allow.as_ref() {
         if !allow.iter().any(|needle| path.ends_with(needle)) {
             return false;
