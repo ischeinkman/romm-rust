@@ -5,7 +5,12 @@ use buoyant::{
     layout::Layout,
     primitives::{Point, Size},
     render::{EmbeddedGraphicsRender, EmbeddedGraphicsView, Renderable},
-    view::match_view::{Branch2, MatchView},
+    view::{
+        HStack, LayoutExtensions, RenderExtensions, Text, VStack, ZStack,
+        match_view::{Branch2, MatchView},
+        padding::Edges,
+        shape::Rectangle,
+    },
 };
 use embedded_graphics::{
     draw_target::DrawTarget,
@@ -13,6 +18,7 @@ use embedded_graphics::{
     pixelcolor::Rgb888,
     prelude::{RgbColor, WebColors},
 };
+use embedded_vintage_fonts::FONT_24X32;
 use homepage::HomepageState;
 use miyoo_io::{InputReader, MiyooButton, MiyooButtonEvent, MiyooFramebuffer};
 use savelist::SavelistState;
@@ -148,7 +154,7 @@ pub trait ViewState {
     fn release(&mut self) -> impl Future<Output = Result<(), anyhow::Error>> + '_ {
         futures::future::ready(Ok(()))
     }
-    fn build_view(&self) -> impl EmbeddedGraphicsView<Rgb888> + Layout + Clone + '_;
+    fn build_view(&self) -> impl EmbeddedGraphicsView<Rgb888> + Layout + '_;
 }
 
 pub enum FullViewState<'a> {
@@ -205,16 +211,52 @@ impl ViewState for FullViewState<'_> {
             SavesList(view) => view.release().await,
         }
     }
-    fn build_view(&self) -> impl EmbeddedGraphicsView<Rgb888> + Layout + Clone + '_ {
-        match self {
+    fn build_view(&self) -> impl EmbeddedGraphicsView<Rgb888> + Layout + '_ {
+        let (inner, tab_selection) = match self {
             FullViewState::SavesList(view) => {
                 let inner = view.build_view();
-                MatchView::<Branch2<_, _>>::new(Branch2::Variant0(inner))
+                (MatchView::<Branch2<_, _>>::new(Branch2::Variant0(inner)), 0)
             }
             FullViewState::Homepage(view) => {
                 let inner = view.build_view();
-                MatchView::<Branch2<_, _>>::new(Branch2::Variant1(inner))
+                (MatchView::<Branch2<_, _>>::new(Branch2::Variant1(inner)), 1)
             }
-        }
+        };
+        let tabs = HStack::new((
+            header_tab("Home", tab_selection == 0),
+            header_tab("Saves", tab_selection == 1),
+        ))
+        .flex_frame()
+        .with_infinite_max_width();
+        VStack::new((tabs, inner)).flex_frame()
     }
+}
+
+fn header_tab(label: &str, selected: bool) -> impl EmbeddedGraphicsView<Rgb888> + Clone {
+    const UNSELECTED_TEXT_COLOR: Rgb888 = Rgb888::BLACK;
+    const UNSELECTED_BACKGROUND_COLOR: Rgb888 = Rgb888::CSS_DARK_BLUE;
+    const RECT_H_BORDER: u16 = 5;
+    const TAB_LABEL_PADDING: u16 = 2;
+
+    let txt_color = if selected {
+        UNSELECTED_BACKGROUND_COLOR
+    } else {
+        UNSELECTED_TEXT_COLOR
+    };
+    let background_color = if selected {
+        UNSELECTED_TEXT_COLOR
+    } else {
+        UNSELECTED_BACKGROUND_COLOR
+    };
+
+    let txt = Text::new(label, &FONT_24X32).foreground_color(txt_color);
+    let background_rect = Rectangle.foreground_color(background_color);
+    let buffer_rect = Rectangle
+        .foreground_color(Rgb888::BLACK)
+        .padding(Edges::Horizontal, RECT_H_BORDER);
+    ZStack::new((buffer_rect, background_rect, txt))
+        .flex_frame()
+        .with_infinite_max_width()
+        .with_min_height(FONT_24X32.character_size.height as u16 + 2 * TAB_LABEL_PADDING)
+        .with_max_height(FONT_24X32.character_size.height as u16 + 2 * TAB_LABEL_PADDING)
 }

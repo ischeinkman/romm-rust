@@ -1,3 +1,9 @@
+//! The tab used for configuring what, specifically, gets synced.
+//!
+//! Current UI & navigation is a paged scroll list of checkmarks with
+//! `[default]` at the top controlling what the default is for new saves
+//! following by each of the possible save files, ordered alphabetically.
+
 use std::{
     borrow::Cow,
     path::{Path, PathBuf},
@@ -130,7 +136,7 @@ impl ViewState for SavelistState<'_> {
         self.cfg.save_current_platform().await?;
         Ok(())
     }
-    fn build_view(&self) -> impl EmbeddedGraphicsView<Rgb888> + Layout + Clone + '_ {
+    fn build_view(&self) -> impl EmbeddedGraphicsView<Rgb888> + Layout + '_ {
         const PER_SCREEN: usize = 10;
         const SPACING: u16 = 4;
         const MAX_CHARACTERS_PER_BUTTON: usize = 24;

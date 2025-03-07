@@ -1,3 +1,19 @@
+//! The home tab of the UI, used for installing & uninstalling the daemon.
+//!
+//! Current UI & navigation:
+//!
+//! ```text
+//!  -------------------------------
+//! | Daemon installed checkbox |o| |
+//!  -------------------------------
+//!     ^                   ^
+//!     |                   |
+//!     v                   v
+//!   -----------       -----------
+//!  | Reinstall | <-> | Uninstall |
+//!   -----------       -----------
+//! ```
+
 use buoyant::{
     layout::Layout,
     render::EmbeddedGraphicsView,
@@ -106,7 +122,7 @@ impl ViewState for HomepageState {
         self.pressed = false;
         Ok(())
     }
-    fn build_view(&self) -> impl EmbeddedGraphicsView<Rgb888> + Layout + Clone + '_ {
+    fn build_view(&self) -> impl EmbeddedGraphicsView<Rgb888> + Layout + '_ {
         let installed_box = labeled_checkbox(
             "Daemon installed",
             self.selection == HomePageSelection::DaemonInstalledBox,

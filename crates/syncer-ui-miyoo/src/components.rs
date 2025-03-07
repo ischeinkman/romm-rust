@@ -2,7 +2,8 @@ use buoyant::{
     layout::Layout,
     render::EmbeddedGraphicsView,
     view::{
-        HStack, LayoutExtensions, RenderExtensions, Text, ZStack, padding::Edges, shape::Rectangle,
+        HStack, LayoutExtensions, RenderExtensions, Spacer, Text, ZStack, padding::Edges,
+        shape::Rectangle,
     },
 };
 use embedded_graphics::{
@@ -11,16 +12,17 @@ use embedded_graphics::{
 };
 use embedded_vintage_fonts::FONT_24X32;
 
-/// A [`checkbox`] with a label to the left. 
+/// A [`checkbox`] with a label to the left.
 pub fn labeled_checkbox<'a, S: AsRef<str> + Clone + 'a>(
     label: S,
     is_selected: bool,
     is_on: bool,
-) -> impl EmbeddedGraphicsView<Rgb888> + Clone + 'a {
+) -> impl EmbeddedGraphicsView<Rgb888> + 'a {
     const HEIGHT: u16 = FONT_24X32.character_size.height as _;
     const PADDING: u16 = 4;
     HStack::new((
         Text::new(label, &FONT_24X32).foreground_color(Rgb888::BLACK),
+        Spacer::default(),
         checkbox(is_selected, is_on),
     ))
     .flex_frame()
@@ -57,7 +59,7 @@ pub fn checkbox(
         .geometry_group()
 }
 
-/// A button with text that can be selected & pressed. 
+/// A button with text that can be selected & pressed.
 pub fn button(
     text: &str,
     is_selected: bool,

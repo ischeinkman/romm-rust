@@ -76,7 +76,7 @@ pub async fn daemon_is_installed() -> Result<bool, DaemonError> {
 #[derive(Debug, Error)]
 pub enum DaemonError {
     #[error(
-        "Subprocess failed ({}). Stdout: {stdout}. Stderr: {stderr}", 
+        "Subprocess failed ({}). Stdout: {stdout}. Stderr: {stderr}",
         process.map(|n| n.to_string()).unwrap_or("<UNKNOWN>".to_owned())
     )]
     Subprocess {
