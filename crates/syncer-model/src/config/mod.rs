@@ -256,7 +256,7 @@ pub struct SystemConfig {
     /// If true, we use a filesystem notification library to sync whenever a
     /// save file changes locally on disk.
     #[serde(default = "default_true", skip_serializing_if = "is_true")]
-    pub sync_on_file_change : bool, 
+    pub sync_on_file_change: bool,
 }
 
 impl SystemConfig {
@@ -280,7 +280,7 @@ impl SystemConfig {
             deny,
             allow,
             poll_interval: other.poll_interval,
-            sync_on_file_change : other.sync_on_file_change,
+            sync_on_file_change: other.sync_on_file_change,
         }
     }
 

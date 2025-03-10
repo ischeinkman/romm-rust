@@ -162,8 +162,8 @@ pub enum FullViewState<'a> {
     SavesList(SavelistState<'a>),
 }
 
-impl <'a> FullViewState<'a> {
-    pub async fn new(cfg : &'a mut Config) -> Result<Self, anyhow::Error> {
+impl<'a> FullViewState<'a> {
+    pub async fn new(cfg: &'a mut Config) -> Result<Self, anyhow::Error> {
         Ok(Self::Homepage(HomepageState::new(cfg).await?))
     }
 }

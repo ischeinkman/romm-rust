@@ -1,4 +1,4 @@
-use std::{hash::Hash, num::ParseIntError, ops::Deref, fmt, str::FromStr, time::Duration};
+use std::{fmt, hash::Hash, num::ParseIntError, ops::Deref, str::FromStr, time::Duration};
 
 use serde::{de::Visitor, Deserialize, Deserializer, Serialize};
 use thiserror::Error;
@@ -89,7 +89,7 @@ impl<T> Eq for FlattenedList<T> where T: Eq {}
 pub struct ParseableDuration(Duration);
 
 impl ParseableDuration {
-    pub const fn new(inner : Duration) -> Self {
+    pub const fn new(inner: Duration) -> Self {
         Self(inner)
     }
 }
