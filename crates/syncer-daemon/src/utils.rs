@@ -9,8 +9,6 @@ use futures::{Stream, TryStreamExt};
 use thiserror::Error;
 use tokio::fs::{self, File};
 use tokio::io::AsyncWriteExt;
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::watch;
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq, Hash)]
@@ -121,39 +119,27 @@ impl ConfigurableSleep {
 }
 
 #[derive(Clone)]
-pub struct EventTrigger(mpsc::Sender<()>);
+pub struct EventTrigger(watch::Sender<bool>);
 
 impl EventTrigger {
     pub fn new() -> (EventTrigger, EventTriggerRecv) {
-        let (snd, rcv) = mpsc::channel(1);
-        (EventTrigger(snd), EventTriggerRecv(rcv))
+        let (snd, _) = watch::channel(false);
+        (EventTrigger(snd.clone()), EventTriggerRecv(snd))
     }
 
-    pub fn is_triggered(&self) -> bool {
-        self.0.try_reserve().is_err()
-    }
-    pub async fn wait_for_reset(&self) {
-        self.0.reserve().await.ok();
-    }
     pub fn trigger(&self) {
-        match self.0.try_send(()) {
-            Ok(()) => {}
-            Err(TrySendError::Full(_)) => {}
-            Err(TrySendError::Closed(_)) => {}
-        }
+        self.0.send_replace(true);
     }
 }
 
-pub struct EventTriggerRecv(mpsc::Receiver<()>);
+pub struct EventTriggerRecv(watch::Sender<bool>);
 impl EventTriggerRecv {
-    pub fn is_triggered(&self) -> bool {
-        self.0.capacity() != self.0.max_capacity()
-    }
     pub async fn wait_and_reset(&mut self) {
-        self.0.recv().await;
-        self.reset();
-    }
-    pub fn reset(&mut self) {
-        while self.0.try_recv().is_ok() {}
+        loop {
+            self.0.subscribe().wait_for(|v| *v).await.ok();
+            if self.0.send_replace(false) {
+                break;
+            }
+        }
     }
 }
