@@ -1,4 +1,4 @@
-use std::{hash::Hash, num::ParseIntError, ops::Deref, str::FromStr, time::Duration};
+use std::{hash::Hash, num::ParseIntError, ops::Deref, fmt, str::FromStr, time::Duration};
 
 use serde::{de::Visitor, Deserialize, Deserializer, Serialize};
 use thiserror::Error;
@@ -88,6 +88,12 @@ impl<T> Eq for FlattenedList<T> where T: Eq {}
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, PartialOrd, Ord)]
 pub struct ParseableDuration(Duration);
 
+impl ParseableDuration {
+    pub const fn new(inner : Duration) -> Self {
+        Self(inner)
+    }
+}
+
 const DURATION_SUFFIXES: &[(u64, &str)] = &[
     (0, "ns"),
     (1000, "us"),
@@ -157,13 +163,19 @@ impl FromStr for ParseableDuration {
     }
 }
 
+impl fmt::Display for ParseableDuration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (n, suffix) = nanos_to_unitted(self.0.as_nanos());
+        write!(f, "{n}{suffix}")
+    }
+}
+
 impl Serialize for ParseableDuration {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        let (n, suffix) = nanos_to_unitted(self.0.as_nanos());
-        serializer.serialize_str(&format!("{n}{suffix}"))
+        serializer.serialize_str(&self.to_string())
     }
 }
 
@@ -188,6 +200,17 @@ impl Visitor<'_> for ParseDurationVisitor {
         E: serde::de::Error,
     {
         ParseableDuration::from_str(v).map_err(E::custom)
+    }
+}
+
+impl From<ParseableDuration> for Duration {
+    fn from(value: ParseableDuration) -> Self {
+        value.0
+    }
+}
+impl From<Duration> for ParseableDuration {
+    fn from(value: Duration) -> Self {
+        Self(value)
     }
 }
 

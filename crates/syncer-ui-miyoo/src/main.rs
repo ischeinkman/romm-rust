@@ -54,7 +54,7 @@ async fn async_main() {
     fb.flush().unwrap();
     let mut input = InputReader::new().unwrap();
     let mut cfg = Config::load_current_platform().await.unwrap();
-    let mut view = FullViewState::new().await.unwrap();
+    let mut view = FullViewState::new(&mut cfg).await.unwrap();
 
     loop {
         let tree = view.build_view();
@@ -102,7 +102,7 @@ async fn async_main() {
                         FullViewState::SavesList(SavelistState::new(&mut cfg).await)
                     }
                     FullViewState::SavesList(_) => {
-                        FullViewState::Homepage(HomepageState::new().await.unwrap())
+                        FullViewState::Homepage(HomepageState::new(&mut cfg).await.unwrap())
                     }
                 };
             }
@@ -112,7 +112,7 @@ async fn async_main() {
                         FullViewState::SavesList(SavelistState::new(&mut cfg).await)
                     }
                     FullViewState::SavesList(_) => {
-                        FullViewState::Homepage(HomepageState::new().await.unwrap())
+                        FullViewState::Homepage(HomepageState::new(&mut cfg).await.unwrap())
                     }
                 };
             }
@@ -158,13 +158,13 @@ pub trait ViewState {
 }
 
 pub enum FullViewState<'a> {
-    Homepage(HomepageState),
+    Homepage(HomepageState<'a>),
     SavesList(SavelistState<'a>),
 }
 
-impl FullViewState<'_> {
-    pub async fn new() -> Result<Self, anyhow::Error> {
-        Ok(Self::Homepage(HomepageState::new().await?))
+impl <'a> FullViewState<'a> {
+    pub async fn new(cfg : &'a mut Config) -> Result<Self, anyhow::Error> {
+        Ok(Self::Homepage(HomepageState::new(cfg).await?))
     }
 }
 
