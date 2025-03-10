@@ -252,6 +252,11 @@ pub struct SystemConfig {
 
     /// How often the daemon should poll the host & server for changes.
     pub poll_interval: ParseableDuration,
+
+    /// If true, we use a filesystem notification library to sync whenever a
+    /// save file changes locally on disk.
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    pub sync_on_file_change : bool, 
 }
 
 impl SystemConfig {
@@ -275,6 +280,7 @@ impl SystemConfig {
             deny,
             allow,
             poll_interval: other.poll_interval,
+            sync_on_file_change : other.sync_on_file_change,
         }
     }
 

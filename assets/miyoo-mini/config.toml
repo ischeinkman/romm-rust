@@ -60,6 +60,10 @@ database = "syncdb.sqlite"
 # deny = []
 
 # How often the daemon should check for any necessary resyncs
-#
-# Making this configurable via the Miyoo Mini UI is still TODO 
 poll_interval = "30m" 
+
+
+# If true (default), will attempt to detect filesystem changes of saves on the
+# device as they happen and sync whenever one occurs. 
+#
+# sync_on_file_change = true 
