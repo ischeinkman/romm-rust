@@ -1,7 +1,8 @@
-use std::{env, path::PathBuf, time::Duration};
+use std::{env, path::PathBuf, sync::Arc, time::Duration};
 
 use futures::{future::Either, pin_mut, FutureExt};
 use notify::{RecursiveMode, Watcher};
+use socketproto::spawn_command_listen_thread;
 use tokio::{
     sync::{mpsc, watch},
     task::JoinHandle,
@@ -16,6 +17,7 @@ use syncer_model::{
 };
 
 mod database;
+mod socketproto;
 use database::SaveMetaDatabase;
 mod md5hash;
 mod rommclient;
@@ -82,7 +84,9 @@ async fn async_main() {
         cfg.romm.api_key.clone().unwrap(),
     );
 
-    run_sync(&cfg, &cl, &db).await.unwrap();
+    let state = Arc::new(DaemonState::new());
+    let command_waiter = spawn_command_listen_thread(Arc::clone(&state)).unwrap();
+    command_waiter.await.unwrap();
 }
 
 pub struct DaemonState {

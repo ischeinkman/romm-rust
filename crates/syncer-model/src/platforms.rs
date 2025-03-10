@@ -1,6 +1,6 @@
 //! Tools used for determining the platform we're running on.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// Different platforms the ROMM sync tool supports, for deriving things like
 /// config & socket paths.
@@ -92,7 +92,7 @@ impl Platform {
     }
 
     /// The place to open the named socket on the platform.
-    pub fn socket_path(&self) -> PathBuf {
+    pub fn socket_path(&self) -> String {
         match *self {
             Platform::MiyooMiniOnion => "daemon-socket.socket".into(),
             Platform::Linux => "~/.config/romm-syncer/daemon-socket.socket".into(),
