@@ -28,3 +28,4 @@ serde = { version = "1.0.217", features = ["derive"] }
 
 romm-api = { path = "../romm-api" }
 syncer-model = { path = "../syncer-model" }
+notify = "8.0.0"

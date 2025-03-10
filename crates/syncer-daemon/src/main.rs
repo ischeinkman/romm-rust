@@ -1,6 +1,11 @@
-use std::{env, time::Duration};
+use std::{env, path::PathBuf, time::Duration};
 
-use tokio::task::JoinHandle;
+use futures::{future::Either, pin_mut, FutureExt};
+use notify::{RecursiveMode, Watcher};
+use tokio::{
+    sync::{mpsc, watch},
+    task::JoinHandle,
+};
 use tracing::{debug, error, info, level_filters::LevelFilter};
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
 
@@ -81,14 +86,23 @@ async fn async_main() {
 }
 
 pub struct DaemonState {
-    sync_trigger: EventTrigger,
+    /// The setter for configuring the time the `_sync_loop_thread` should sleep between syncs.
     sync_loop_sleep: ConfigurableSleepSetter,
     /// The thread responsible for triggering a sync every `poll_interval` time.
     _sync_loop_thread: JoinHandle<()>,
+
+    /// The trigger for starting a sync on the `_sync_actor_thread`.
+    sync_trigger: EventTrigger,
     /// The background task that performs full syncs whenever triggered, either
     /// by the [`_sync_loop_thread`] or from a call to
     /// [`DaemonCommand::DoSync`].
     _sync_actor_thread: JoinHandle<()>,
+
+    /// The list of paths to listen to for changes
+    fs_watch_paths: watch::Sender<Vec<PathBuf>>,
+
+    /// The background task that triggers a sync whenever a relevant path gets modified (if enabled)
+    _fs_watch_thread: JoinHandle<()>,
 }
 
 impl DaemonState {
@@ -97,11 +111,14 @@ impl DaemonState {
         let (sync_trigger, _sync_actor_thread) = build_sync_actor_thread();
         let (sync_loop_sleep, _sync_loop_thread) =
             build_sync_loop_thread(Duration::MAX, sync_trigger.clone());
+        let (fs_watch_paths, _fs_watch_thread) = build_fs_watch_thread(sync_trigger.clone());
         let retvl = Self {
-            sync_trigger,
             sync_loop_sleep,
-            _sync_actor_thread,
             _sync_loop_thread,
+            sync_trigger,
+            _sync_actor_thread,
+            fs_watch_paths,
+            _fs_watch_thread,
         };
         retvl.run_command(&DaemonCommand::new(DaemonCommandBody::ReloadConfig));
         retvl
@@ -113,6 +130,7 @@ impl DaemonState {
             }
             DaemonCommandBody::ReloadConfig => {
                 let sync_loop_sleep = self.sync_loop_sleep.clone();
+                let fs_watch_paths = self.fs_watch_paths.clone();
                 tokio::task::spawn(async move {
                     let cfg = match load_config().await {
                         Ok(cfg) => cfg,
@@ -122,10 +140,71 @@ impl DaemonState {
                         }
                     };
                     sync_loop_sleep.set(*cfg.system.poll_interval);
+                    let new_watch_paths = if cfg.system.sync_on_file_change {
+                        cfg.save_roots().collect()
+                    } else {
+                        Vec::new()
+                    };
+                    fs_watch_paths.send_replace(new_watch_paths);
                 });
             }
         }
     }
+}
+
+fn build_fs_watch_thread(
+    sync_trigger: EventTrigger,
+) -> (watch::Sender<Vec<PathBuf>>, JoinHandle<()>) {
+    let (snd, mut rcv) = watch::channel(Vec::<PathBuf>::new());
+    let task = async move {
+        loop {
+            // Wrap this in a loop so we build the watcher both on initial
+            // creation and when the list of paths is changed
+            let (evt_snd, mut evt_rcv) = mpsc::unbounded_channel();
+            let watcher = notify::recommended_watcher(move |evt| {
+                evt_snd.send(evt).ok();
+            });
+            let mut watcher = match watcher {
+                Ok(w) => w,
+                Err(e) => {
+                    error!("Error starting fs watcher thread: {e:?}");
+                    return;
+                }
+            };
+            for path in rcv.borrow_and_update().iter() {
+                if let Err(e) = watcher.watch(path, RecursiveMode::Recursive) {
+                    error!("Error watching path {path:?}: {e:?}");
+                }
+            }
+
+            loop {
+                let new_paths = rcv.changed().map(|_| ());
+                let new_events = evt_rcv.recv();
+                pin_mut!(new_paths);
+                pin_mut!(new_events);
+
+                match futures::future::select(new_paths, new_events).await {
+                    Either::Left(((), _)) | Either::Right((None, _)) => {
+                        // We got a new list of paths; rebuild the watcher.
+                        break;
+                    }
+                    Either::Right((Some(Err(e)), _)) => {
+                        error!("Error in watcher thread: {e:?}");
+                    }
+                    Either::Right((Some(Ok(evt)), _)) => {
+                        if !evt.kind.is_access() {
+                            debug!(
+                                "Got FS notification {:?} for paths {:?}; triggering sync.",
+                                evt.kind, evt.paths
+                            );
+                            sync_trigger.trigger();
+                        }
+                    }
+                }
+            }
+        }
+    };
+    (snd, tokio::task::spawn(task))
 }
 
 fn build_sync_loop_thread(
