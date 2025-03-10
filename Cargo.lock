@@ -144,8 +144,9 @@ checksum = "1628fb46dfa0b37568d12e5edd512553eccf6a22a78e8bde00bb4aed84d5bdbf"
 
 [[package]]
 name = "buoyant"
-version = "0.4.0-alpha.2"
-source = "git+https://github.com/riley-williams/buoyant#f30120d72601b1d7044803507d447f26a0c56481"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec91e270205c73111d3e1a6856c2efa1a0778ae02ee4c5cdad17cf0a03449ced"
 dependencies = [
  "embedded-graphics",
  "embedded-graphics-core",

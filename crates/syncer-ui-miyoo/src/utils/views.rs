@@ -15,10 +15,6 @@ struct ForEachDynEnvironment<'a, T> {
 }
 
 impl<T: LayoutEnvironment> LayoutEnvironment for ForEachDynEnvironment<'_, T> {
-    fn alignment(&self) -> buoyant::layout::Alignment {
-        self.inner_environment.alignment()
-    }
-
     fn layout_direction(&self) -> LayoutDirection {
         LayoutDirection::Vertical
     }
