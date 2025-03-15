@@ -9,7 +9,7 @@ use crate::{md5hash::Md5Hash, SaveMeta};
 mod migrations;
 
 /// A database containing metadata around previously seen save versions.
-/// 
+///
 /// Used for detecting when a save can be safely synced to/from the device and
 /// when there is a conflict; see this crate's `README` for more details as to
 /// the exact process used for deciding when & how a save is synced.
@@ -26,7 +26,7 @@ impl SaveMetaDatabase {
     }
 
     /// Opens a temporary database in memory.
-    /// 
+    ///
     /// Use only for tests.
     #[cfg_attr(not(test), expect(unused))]
     fn new_in_memory() -> Result<Self, MigrationError> {

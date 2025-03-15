@@ -150,7 +150,6 @@ impl EventTrigger {
     }
 }
 
-
 pub struct EventTriggerRecv(watch::Sender<bool>);
 impl EventTriggerRecv {
     pub async fn wait_and_reset(&mut self) {

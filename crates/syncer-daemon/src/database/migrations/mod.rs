@@ -1,10 +1,10 @@
 //! Tools for changing the sync database's schema over time in a non-destructive
-//! manner. 
-//! 
+//! manner.
+//!
 //! Each schema is associated with a version number and a migration. The
 //! migration contains code for moving both from & to the previous version
 //! without loss of the previous version's data.
-//! 
+//!
 //! A non-existent database is considered version 0.
 
 // This annotation will cause a compile error if we accidentally forget to put a
@@ -116,12 +116,12 @@ fn migrations() -> impl Iterator<Item = &'static DatabaseMigration> {
     let mut nxt = 1;
     iter::from_fn(move || {
         // Since we can't gurantee that `MIGRATIONS` is in order at compile time
-        // we fix the order at runtime. 
+        // we fix the order at runtime.
         //
         // While this is technically slow for a large number of versions bc of
         // the O(n^2) complexity we assume that a) we won't have a huge number
         // of versions, and b) this is only ever called at daemon start, so a
-        // little delay at startup is not that bad. 
+        // little delay at startup is not that bad.
         for possible in MIGRATIONS {
             if possible.version == nxt {
                 nxt += 1;
@@ -160,7 +160,7 @@ impl DatabaseMigration {
 const MIGRATIONS: &[DatabaseMigration] = &[scaffolding::metadata_migration(), base::base_schema()];
 
 /// Compile time checks for sanity of [`MIGRATIONS`].
-/// 
+///
 /// Specifically:
 /// * No duplicate version numbers
 /// * No skipped version numbers
