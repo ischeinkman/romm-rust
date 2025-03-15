@@ -150,14 +150,53 @@ impl EventTrigger {
     }
 }
 
+
 pub struct EventTriggerRecv(watch::Sender<bool>);
 impl EventTriggerRecv {
     pub async fn wait_and_reset(&mut self) {
-        loop {
-            self.0.subscribe().wait_for(|v| *v).await.ok();
-            if self.0.send_replace(false) {
-                break;
-            }
+        if self.0.subscribe().wait_for(|b| *b).await.is_ok() {
+            self.0.send_replace(false);
+        } else {
+            // If all senders have closed the event will never trigger
+            // again.
+            //
+            // This should be impossible though since we ourselves hold a
+            // sender on this channel.
+            futures::future::pending().await
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures::FutureExt;
+    #[test]
+    fn test_event_trigger() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let (snd, mut rcv) = EventTrigger::new();
+
+            // Make sure we see the first trigger
+            snd.trigger();
+            assert!(rcv.wait_and_reset().now_or_never().is_some());
+
+            // Make sure the trigger is reset correctly
+            assert!(rcv.wait_and_reset().now_or_never().is_none());
+
+            // Make sure we can trigger the event a second time
+            snd.trigger();
+            assert!(rcv.wait_and_reset().now_or_never().is_some());
+            assert!(rcv.wait_and_reset().now_or_never().is_none());
+
+            // Multiple triggers before a `wait_and_reset` should only cause a
+            // single `wait_and_reset` to complete
+            snd.trigger();
+            snd.trigger();
+            assert!(rcv.wait_and_reset().now_or_never().is_some());
+            assert!(rcv.wait_and_reset().now_or_never().is_none());
+        })
     }
 }
