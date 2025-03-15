@@ -10,6 +10,12 @@
 //!              |
 //!              v
 //!  -------------------------------
+//! | Daemon running checkbox   |o| |
+//!  -------------------------------
+//!              ^
+//!              |
+//!              v
+//!  -------------------------------
 //! | Poll time             < 30m > |
 //!  -------------------------------
 //!              ^
@@ -38,9 +44,12 @@ use embedded_vintage_fonts::FONT_24X32;
 use futures::future;
 use syncer_model::config::{Config, ParseableDuration};
 
-use crate::components::{button, labeled_checkbox};
 use crate::daemon::{daemon_is_installed, install_daemon, reinstall_daemon, uninstall_daemon};
 use crate::{ApplicationState, ViewState};
+use crate::{
+    components::{button, labeled_checkbox},
+    daemon::{daemon_is_running, start_daemon, stop_daemon},
+};
 
 const POLL_TIME_OPTIONS: &[Duration] = &[
     Duration::MAX, // Disabled
@@ -68,6 +77,7 @@ const fn cur_poll_idx(duration: Duration) -> usize {
 
 pub struct HomepageState {
     daemon_installed: bool,
+    daemon_running: bool,
     pressed: bool,
     selection: HomePageSelection,
     app_state: ApplicationState,
@@ -79,6 +89,7 @@ enum HomePageSelection {
     #[default]
     Nothing,
     DaemonInstalledBox,
+    DaemonRunningBox,
     PollTimeSelection,
     FsnotifyBox,
     ReinstallDaemon,
@@ -91,7 +102,8 @@ impl HomePageSelection {
         match *self {
             UninstallDaemon | ReinstallDaemon => FsnotifyBox,
             FsnotifyBox => PollTimeSelection,
-            PollTimeSelection => DaemonInstalledBox,
+            PollTimeSelection => DaemonRunningBox,
+            DaemonRunningBox => DaemonInstalledBox,
             DaemonInstalledBox | Nothing => Nothing,
         }
     }
@@ -99,7 +111,8 @@ impl HomePageSelection {
         use HomePageSelection::*;
         match *self {
             Nothing => DaemonInstalledBox,
-            DaemonInstalledBox => PollTimeSelection,
+            DaemonInstalledBox => DaemonRunningBox,
+            DaemonRunningBox => PollTimeSelection,
             PollTimeSelection => FsnotifyBox,
             FsnotifyBox => ReinstallDaemon,
             ReinstallDaemon | UninstallDaemon => Nothing,
@@ -123,6 +136,7 @@ impl HomepageState {
         let mut retvl = Self {
             app_state: cfg,
             daemon_installed: false,
+            daemon_running: false,
             pressed: false,
             selection: HomePageSelection::default(),
             poll_interval: ParseableDuration::new(Duration::ZERO),
@@ -132,6 +146,7 @@ impl HomepageState {
     }
     async fn reload(&mut self) -> Result<(), anyhow::Error> {
         self.daemon_installed = daemon_is_installed().await?;
+        self.daemon_running = daemon_is_running().await?;
         self.poll_interval = self.app_state.config().await.system.poll_interval;
         Ok(())
     }
@@ -199,6 +214,14 @@ impl ViewState for HomepageState {
                 install_daemon().await?;
                 self.reload().await?;
             }
+            DaemonRunningBox if self.daemon_running => {
+                stop_daemon().await?;
+                self.reload().await?;
+            }
+            DaemonRunningBox => {
+                start_daemon().await?;
+                self.reload().await?;
+            }
             FsnotifyBox => {
                 //TODO: this
             }
@@ -212,6 +235,11 @@ impl ViewState for HomepageState {
             "Daemon installed",
             self.selection == HomePageSelection::DaemonInstalledBox,
             self.daemon_installed,
+        );
+        let running_box = labeled_checkbox(
+            "Daemon Running",
+            self.selection == HomePageSelection::DaemonRunningBox,
+            self.daemon_running,
         );
         let uninstall_btn = button(
             "Uninstall",
@@ -232,7 +260,7 @@ impl ViewState for HomepageState {
         );
 
         let btns = HStack::new((reinstall_btn, uninstall_btn));
-        VStack::new((installed_box, poll_time_cfg, btns)).frame()
+        VStack::new((installed_box, running_box, poll_time_cfg, btns)).frame()
     }
 }
 

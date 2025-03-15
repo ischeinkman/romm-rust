@@ -10,10 +10,12 @@ interprocess = {workspace = true}
 thiserror = {workspace = true}
 tokio = { workspace = true }
 
+syncer-model = {path = "../syncer-model"}
+
 buoyant = { version = "0.4.0", features = ["std"]}
 embedded-graphics = "0.8.1"
 embedded-vintage-fonts = "0.2.0"
 evdev = { version = "0.13.0", features = ["tokio"] }
 linuxfb = "0.3.1"
+procfs = "0.17.0"
 
-syncer-model = {path = "../syncer-model"}

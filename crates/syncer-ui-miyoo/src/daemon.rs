@@ -1,9 +1,11 @@
-use std::io;
+use std::{io, path::Path};
 
+use procfs::{ProcError, process};
 use thiserror::Error;
 use tokio::{fs, process::Command};
 
 const SERVICE_INSTALL_PATH: &str = "/mnt/SDCARD/.tmp_update/startup/start-daemon.sh";
+const DAEMON_EXE_PATH: &str = "./syncer-daemon";
 const SERVICE_PATH: &str = "./start-daemon.sh";
 
 /// Installs the daemon into the Miyoo Mini, including:
@@ -73,6 +75,22 @@ pub async fn daemon_is_installed() -> Result<bool, DaemonError> {
     }
 }
 
+pub async fn daemon_is_running() -> Result<bool, DaemonError> {
+    let task = || {
+        let expected = Path::new(DAEMON_EXE_PATH).canonicalize()?;
+        let procs = process::all_processes()?;
+        for proc in procs {
+            let proc = proc?;
+            let exe_path = proc.exe()?.canonicalize()?;
+            if exe_path == expected {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    };
+    tokio::task::spawn_blocking(task).await.unwrap()
+}
+
 #[derive(Debug, Error)]
 pub enum DaemonError {
     #[error(
@@ -86,4 +104,6 @@ pub enum DaemonError {
     },
     #[error(transparent)]
     Io(#[from] io::Error),
+    #[error(transparent)]
+    ProcFs(#[from] ProcError),
 }
