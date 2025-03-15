@@ -147,7 +147,6 @@ fn is_enabled(cfg: &Config, path: &Path) -> bool {
         .any(|needle| needle.matches_path(path))
 }
 
-
 // TODO: These are only lifted out of the `pressed` function because of
 // difficulties with Rust's lifetime construction for async closures. These
 // should eventually be moved back once we figure out how to make the borrow
