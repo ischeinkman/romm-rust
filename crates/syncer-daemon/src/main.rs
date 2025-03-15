@@ -50,27 +50,19 @@ fn init_logger() {
         .with_env_var("ROM_SYNC_LOG")
         .from_env()
         .unwrap();
-    let mut subscriber = FmtSubscriber::builder()
+    let subscriber = FmtSubscriber::builder()
         .with_env_filter(trace_env)
         .with_file(true)
         .with_line_number(true);
-    let no_color = env::var_os("NO_COLOR").is_some_and(|s| !s.eq_ignore_ascii_case("0"));
+    let no_color = env::var_os("NO_COLOR").is_some_and(|s| !s.eq_ignore_ascii_case("0"))
+        || env::var_os("ROM_SYNC_NO_COLOR").is_some_and(|s| !s.eq_ignore_ascii_case("0"));
     let json_log = env::var_os("ROM_SYNC_LOG_JSON").is_some_and(|s| !s.eq_ignore_ascii_case("0"));
-    match (no_color, json_log) {
-        (false, false) => {
-            subscriber = subscriber.with_ansi(true);
-        }
-        (true, false) => {
-            subscriber = subscriber.with_ansi(false);
-        }
-        (false, true) => {
-            todo!()
-        }
-        (true, true) => {
-            todo!()
-        }
+    let subscriber = subscriber.with_ansi(!no_color);
+    if json_log {
+        subscriber.json().finish().init();
+    } else {
+        subscriber.finish().init();
     }
-    subscriber.finish().init();
 }
 
 #[allow(unused)]
