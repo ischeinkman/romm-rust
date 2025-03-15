@@ -1,3 +1,14 @@
+//! Tools for changing the sync database's schema over time in a non-destructive
+//! manner. 
+//! 
+//! Each schema is associated with a version number and a migration. The
+//! migration contains code for moving both from & to the previous version
+//! without loss of the previous version's data.
+//! 
+//! A non-existent database is considered version 0.
+
+// This annotation will cause a compile error if we accidentally forget to put a
+// new migration into the `MIGRATIONS` list.
 #![deny(unused)]
 
 use std::iter;
@@ -41,6 +52,7 @@ impl MigrationError {
     }
 }
 
+/// Attempts to update the database's schema to the latest version.
 pub fn apply_migrations(con: &mut Connection) -> Result<(), MigrationError> {
     let version = database_version(con).map_err(|e| MigrationErrorInner {
         version: 0,
@@ -99,9 +111,17 @@ fn database_version(con: &mut Connection) -> Result<usize, rusqlite::Error> {
     }
 }
 
+/// Retrieves the list of migrations in version order.
 fn migrations() -> impl Iterator<Item = &'static DatabaseMigration> {
     let mut nxt = 1;
     iter::from_fn(move || {
+        // Since we can't gurantee that `MIGRATIONS` is in order at compile time
+        // we fix the order at runtime. 
+        //
+        // While this is technically slow for a large number of versions bc of
+        // the O(n^2) complexity we assume that a) we won't have a huge number
+        // of versions, and b) this is only ever called at daemon start, so a
+        // little delay at startup is not that bad. 
         for possible in MIGRATIONS {
             if possible.version == nxt {
                 nxt += 1;
@@ -113,8 +133,11 @@ fn migrations() -> impl Iterator<Item = &'static DatabaseMigration> {
 }
 
 struct DatabaseMigration {
+    /// The version number of this database schema
     pub version: usize,
+    /// The code to move FROM `version - 1` TO this `version.`
     pub forward: fn(&mut Connection) -> Result<(), rusqlite::Error>,
+    /// The code to move TO `version - 1` FROM this `version.`
     pub backwards: fn(&mut Connection) -> Result<(), rusqlite::Error>,
 }
 
@@ -136,12 +159,20 @@ impl DatabaseMigration {
 
 const MIGRATIONS: &[DatabaseMigration] = &[scaffolding::metadata_migration(), base::base_schema()];
 
+/// Compile time checks for sanity of [`MIGRATIONS`].
+/// 
+/// Specifically:
+/// * No duplicate version numbers
+/// * No skipped version numbers
 #[expect(unused)]
 const ASSERTIONS: () = {
     let mut flags: [bool; MIGRATIONS.len()] = [false; MIGRATIONS.len()];
     let mut idx = 0;
     while idx < MIGRATIONS.len() {
         let cur = MIGRATIONS[idx].version - 1;
+        if cur >= flags.len() {
+            panic!("Found a version higher than expected!");
+        }
         if flags[cur] {
             panic!("Found duplicate version!");
         }

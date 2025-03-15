@@ -8,6 +8,11 @@ use crate::{md5hash::Md5Hash, SaveMeta};
 
 mod migrations;
 
+/// A database containing metadata around previously seen save versions.
+/// 
+/// Used for detecting when a save can be safely synced to/from the device and
+/// when there is a conflict; see this crate's `README` for more details as to
+/// the exact process used for deciding when & how a save is synced.
 pub struct SaveMetaDatabase {
     con: Mutex<Connection>,
 }
@@ -20,6 +25,9 @@ impl SaveMetaDatabase {
         Ok(Self { con })
     }
 
+    /// Opens a temporary database in memory.
+    /// 
+    /// Use only for tests.
     #[cfg_attr(not(test), expect(unused))]
     fn new_in_memory() -> Result<Self, MigrationError> {
         let mut con = Connection::open_in_memory().map_err(MigrationError::from_raw)?;
@@ -28,6 +36,7 @@ impl SaveMetaDatabase {
         Ok(Self { con })
     }
 
+    /// Pulls the latest metadata seen for a given save file from the database.
     pub fn query_metadata(
         &self,
         rom: &str,
@@ -85,6 +94,7 @@ impl SaveMetaDatabase {
         Ok(ret)
     }
 
+    /// Pushes new metadata into the database after a sync.
     pub fn upsert_metadata(&self, metadata: &SaveMeta) -> Result<(), DatabaseError> {
         const QUERY: &str = r#"
 INSERT INTO saves(

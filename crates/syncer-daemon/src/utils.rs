@@ -19,6 +19,11 @@ pub enum EitherError<A, B> {
     B(B),
 }
 
+/// Atomically writes a file from a stream to the given location.
+///
+/// We do this by first writing the data to a temporary file path with a
+/// timestamp-derived name and moving it to the correct location only after the
+/// data has been completely written to the file.
 pub async fn download<S, B, E>(data: S, dst: &Path) -> Result<(), EitherError<io::Error, E>>
 where
     S: Stream<Item = Result<B, E>>,
@@ -109,6 +114,10 @@ impl ConfigurableSleep {
                 Either::Right((Ok(()), _)) => {
                     continue;
                 }
+                // The `change_fut` can only return an error if all associated
+                // `ConfigrableSleepSetter`s have been dropped; in that case the
+                // sleep value can never be changed, so we can await directly on
+                // the sleep future without worry.
                 Either::Right((Err(_), rest)) => {
                     rest.await;
                     return;
@@ -118,6 +127,15 @@ impl ConfigurableSleep {
     }
 }
 
+/// A synchronization primitive for triggering an event.
+///
+/// If multiple calls to [`EventTrigger:trigger`] occur before the reciever has
+/// a chance to call [`EventTriggerRecv::wait_and_reset`] then only one event
+/// will occur.
+///
+/// This is useful for things like save syncing and configuration flushing,
+/// since even if multiple changes occur before we can do the associated
+/// syncing/flushing we only ever care about the final value.
 #[derive(Clone)]
 pub struct EventTrigger(watch::Sender<bool>);
 
