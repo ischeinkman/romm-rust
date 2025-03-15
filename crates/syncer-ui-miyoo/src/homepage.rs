@@ -78,6 +78,7 @@ const fn cur_poll_idx(duration: Duration) -> usize {
 pub struct HomepageState {
     daemon_installed: bool,
     daemon_running: bool,
+    fs_notify_enabled: bool,
     pressed: bool,
     selection: HomePageSelection,
     app_state: ApplicationState,
@@ -137,6 +138,7 @@ impl HomepageState {
             app_state: cfg,
             daemon_installed: false,
             daemon_running: false,
+            fs_notify_enabled: false,
             pressed: false,
             selection: HomePageSelection::default(),
             poll_interval: ParseableDuration::new(Duration::ZERO),
@@ -147,7 +149,9 @@ impl HomepageState {
     async fn reload(&mut self) -> Result<(), anyhow::Error> {
         self.daemon_installed = daemon_is_installed().await?;
         self.daemon_running = daemon_is_running().await?;
-        self.poll_interval = self.app_state.config().await.system.poll_interval;
+        let cfg = self.app_state.config().await;
+        self.poll_interval = cfg.system.poll_interval;
+        self.fs_notify_enabled = cfg.system.sync_on_file_change;
         Ok(())
     }
 }
@@ -223,7 +227,13 @@ impl ViewState for HomepageState {
                 self.reload().await?;
             }
             FsnotifyBox => {
-                //TODO: this
+                self.app_state
+                    .modify_and_save_cfg(|cfg: &mut Config| {
+                        cfg.system.sync_on_file_change = !self.fs_notify_enabled;
+                        future::ready(())
+                    })
+                    .await?;
+                self.reload().await?;
             }
             PollTimeSelection | Nothing => {}
         }
@@ -259,8 +269,21 @@ impl ViewState for HomepageState {
             self.selection == HomePageSelection::PollTimeSelection,
         );
 
+        let fs_notify_box = labeled_checkbox(
+            "Sync on change",
+            self.selection == HomePageSelection::FsnotifyBox,
+            self.fs_notify_enabled,
+        );
+
         let btns = HStack::new((reinstall_btn, uninstall_btn));
-        VStack::new((installed_box, running_box, poll_time_cfg, btns)).frame()
+        VStack::new((
+            installed_box,
+            running_box,
+            poll_time_cfg,
+            fs_notify_box,
+            btns,
+        ))
+        .frame()
     }
 }
 
