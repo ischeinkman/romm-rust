@@ -1826,6 +1826,7 @@ dependencies = [
  "embedded-vintage-fonts",
  "evdev",
  "futures",
+ "interprocess",
  "linuxfb",
  "syncer-model",
  "thiserror",

@@ -6,26 +6,27 @@
 
 use std::{
     borrow::Cow,
+    io,
     path::{Path, PathBuf},
 };
 
 use buoyant::{layout::Layout, render::EmbeddedGraphicsView};
 use embedded_graphics::pixelcolor::Rgb888;
-use futures::{StreamExt, TryFutureExt, TryStreamExt};
+use futures::{StreamExt, TryFutureExt, TryStreamExt, future};
 use syncer_model::config::Config;
 
-use crate::ViewState;
 use crate::components::labeled_checkbox;
 use crate::utils::ForEachDyn;
+use crate::{ApplicationState, ViewState};
 
-pub struct SavelistState<'a> {
-    saves: Vec<String>,
+pub struct SavelistState {
+    saves: Vec<(String, bool)>,
     selected: usize,
-    cfg: &'a mut Config,
+    cfg: ApplicationState,
 }
 
-impl<'a> SavelistState<'a> {
-    pub async fn new(cfg: &'a mut Config) -> Self {
+impl SavelistState {
+    pub async fn new(cfg: ApplicationState) -> Self {
         let mut retvl = Self {
             saves: Vec::new(),
             selected: 0,
@@ -35,12 +36,12 @@ impl<'a> SavelistState<'a> {
         retvl
     }
     pub async fn reload(&mut self) {
-        self.saves = saves_from_cfg(self.cfg).await;
+        self.saves = saves_from_cfg(&*self.cfg.config().await).await;
         self.selected = 0;
     }
 }
 
-async fn saves_from_cfg(cfg: &Config) -> Vec<String> {
+async fn saves_from_cfg(cfg: &Config) -> Vec<(String, bool)> {
     let mut saves = cfg
         .possible_saves()
         .filter_map(|res| match res {
@@ -50,90 +51,47 @@ async fn saves_from_cfg(cfg: &Config) -> Vec<String> {
                 futures::future::ready(None)
             }
         })
-        .map(|path| path.to_string_lossy().into_owned())
+        .map(|path| {
+            let flag = is_enabled(cfg, &path);
+            (path, flag)
+        })
+        .map(|(path, enabled)| (path.to_string_lossy().into_owned(), enabled))
         .collect::<Vec<_>>()
         .await;
     saves.sort();
-    saves.insert(0, "[default]".to_owned());
+    saves.insert(
+        0,
+        (
+            "[default]".to_owned(),
+            is_enabled(cfg, Path::new("[default]")),
+        ),
+    );
     saves
 }
 
-impl ViewState for SavelistState<'_> {
+impl ViewState for SavelistState {
     fn up(&mut self) -> impl Future<Output = Result<(), anyhow::Error>> + '_ {
         self.selected = self.selected.saturating_sub(1);
-        futures::future::ready(Ok(()))
+        future::ready(Ok(()))
     }
     fn down(&mut self) -> impl Future<Output = Result<(), anyhow::Error>> + '_ {
         self.selected = (self.saves.len() - 1).min(self.selected + 1);
-        futures::future::ready(Ok(()))
+        future::ready(Ok(()))
     }
     async fn press(&mut self) -> Result<(), anyhow::Error> {
         if self.selected == 0 {
-            let (new_allow, new_deny) = if self.cfg.system.allow.is_none() {
-                self.cfg
-                    .possible_saves()
-                    .map_ok(|data| data.0)
-                    .try_filter(|pt| futures::future::ready(is_enabled(self.cfg, pt)))
-                    .try_collect::<Vec<_>>()
-                    .map_ok(|res| (Some(res), Vec::new()))
-                    .await?
-            } else {
-                self.cfg
-                    .possible_saves()
-                    .map_ok(|data| data.0)
-                    .try_filter(|pt| futures::future::ready(!is_enabled(self.cfg, pt)))
-                    .try_collect::<Vec<_>>()
-                    .map_ok(|res| (None, res))
-                    .await?
-            };
-            self.cfg.system.allow = new_allow;
-            self.cfg.system.deny = new_deny;
+            self.cfg.modify_and_save_cfg(toggle_default).await??;
         } else {
-            let prev_enabled = is_enabled(self.cfg, Path::new(&self.saves[self.selected]));
-
-            if prev_enabled {
-                if let Some(allow) = self.cfg.system.allow.as_mut() {
-                    if let Some(prev_idx) = allow
-                        .iter()
-                        .position(|pt| pt.ends_with(&self.saves[self.selected]))
-                    {
-                        allow.remove(prev_idx);
-                    }
-                }
-                if !self
-                    .cfg
-                    .system
-                    .deny
-                    .iter()
-                    .any(|pt| pt.ends_with(&self.saves[self.selected]))
-                {
-                    self.cfg
-                        .system
-                        .deny
-                        .push(PathBuf::from(&self.saves[self.selected]));
-                }
-            } else {
-                if let Some(allow) = self.cfg.system.allow.as_mut() {
-                    if !allow
-                        .iter()
-                        .any(|pt| pt.ends_with(&self.saves[self.selected]))
-                    {
-                        allow.push(PathBuf::from(&self.saves[self.selected]));
-                    }
-                }
-                if let Some(prev_idx) = self
-                    .cfg
-                    .system
-                    .deny
-                    .iter()
-                    .position(|pt| pt.ends_with(&self.saves[self.selected]))
-                {
-                    self.cfg.system.deny.remove(prev_idx);
-                }
-            }
+            let &(ref save, prev_enabled) = &self.saves[self.selected];
+            let save = PathBuf::from(save);
+            self.cfg
+                .modify_and_save_cfg(move |cfg: &mut Config| {
+                    toggle_single(cfg, save, prev_enabled);
+                    future::ready(())
+                })
+                .await?;
         }
-        //TODO: signal the daemon via the domain socket
-        self.cfg.save_current_platform().await?;
+        self.reload().await;
         Ok(())
     }
     fn build_view(&self) -> impl EmbeddedGraphicsView<Rgb888> + Layout + '_ {
@@ -146,9 +104,7 @@ impl ViewState for SavelistState<'_> {
             .saves
             .iter()
             .enumerate()
-            .map(|(idx, label)| {
-                let is_on = is_enabled(self.cfg, Path::new(&label));
-
+            .map(|(idx, (label, is_on))| {
                 let num_chars = label.chars().count();
                 let label_trunc = if num_chars <= MAX_CHARACTERS_PER_BUTTON {
                     Cow::Borrowed(label.as_str())
@@ -163,7 +119,7 @@ impl ViewState for SavelistState<'_> {
                         });
                     Cow::Owned(mapped)
                 };
-                labeled_checkbox(label_trunc, self.selected == idx, is_on)
+                labeled_checkbox(label_trunc, self.selected == idx, *is_on)
             })
             .skip(skip)
             .take(PER_SCREEN)
@@ -189,4 +145,53 @@ fn is_enabled(cfg: &Config, path: &Path) -> bool {
         .as_slice()
         .iter()
         .any(|needle| needle.matches_path(path))
+}
+
+
+// TODO: These are only lifted out of the `pressed` function because of
+// difficulties with Rust's lifetime construction for async closures. These
+// should eventually be moved back once we figure out how to make the borrow
+// checker happy.
+
+async fn toggle_default(cfg: &mut Config) -> Result<(), io::Error> {
+    let (new_allow, new_deny) = if cfg.system.allow.is_none() {
+        cfg.possible_saves()
+            .map_ok(|data| data.0)
+            .try_filter(|pt| future::ready(is_enabled(cfg, pt)))
+            .try_collect::<Vec<_>>()
+            .map_ok(|res| (Some(res), Vec::new()))
+            .await?
+    } else {
+        cfg.possible_saves()
+            .map_ok(|data| data.0)
+            .try_filter(|pt| future::ready(!is_enabled(cfg, pt)))
+            .try_collect::<Vec<_>>()
+            .map_ok(|res| (None, res))
+            .await?
+    };
+    cfg.system.allow = new_allow;
+    cfg.system.deny = new_deny;
+    Result::<_, io::Error>::Ok(())
+}
+
+fn toggle_single(cfg: &mut Config, save: PathBuf, prev_enabled: bool) {
+    if prev_enabled {
+        if let Some(allow) = cfg.system.allow.as_mut() {
+            if let Some(prev_idx) = allow.iter().position(|pt| pt.ends_with(&save)) {
+                allow.remove(prev_idx);
+            }
+        }
+        if !cfg.system.deny.iter().any(|pt| pt.ends_with(&save)) {
+            cfg.system.deny.push(save);
+        }
+    } else {
+        if let Some(allow) = cfg.system.allow.as_mut() {
+            if !allow.iter().any(|pt| pt.ends_with(&save)) {
+                allow.push(save.clone());
+            }
+        }
+        if let Some(prev_idx) = cfg.system.deny.iter().position(|pt| pt.ends_with(&save)) {
+            cfg.system.deny.remove(prev_idx);
+        }
+    }
 }

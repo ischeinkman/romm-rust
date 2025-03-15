@@ -5,8 +5,9 @@ edition = "2024"
 
 [dependencies]
 anyhow = {workspace = true}
-thiserror = {workspace = true}
 futures = {workspace = true}
+interprocess = {workspace = true}
+thiserror = {workspace = true}
 tokio = { workspace = true }
 
 buoyant = { version = "0.4.0", features = ["std"]}

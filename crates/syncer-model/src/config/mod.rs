@@ -12,7 +12,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use url::Url;
 
 mod loading;
-use loading::{FlattenedList, ParseableDuration};
+use loading::FlattenedList;
+pub use loading::ParseableDuration;
 mod save_finding;
 
 use crate::path_format_strings::FormatString;

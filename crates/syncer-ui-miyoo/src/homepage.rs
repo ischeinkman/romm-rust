@@ -35,14 +35,15 @@ use buoyant::{
 };
 use embedded_graphics::{pixelcolor::Rgb888, prelude::RgbColor};
 use embedded_vintage_fonts::FONT_24X32;
-use syncer_model::config::Config;
+use futures::future;
+use syncer_model::config::{Config, ParseableDuration};
 
-use crate::ViewState;
 use crate::components::{button, labeled_checkbox};
 use crate::daemon::{daemon_is_installed, install_daemon, reinstall_daemon, uninstall_daemon};
+use crate::{ApplicationState, ViewState};
 
 const POLL_TIME_OPTIONS: &[Duration] = &[
-    Duration::ZERO, // Disabled
+    Duration::MAX, // Disabled
     Duration::from_secs(60),
     Duration::from_secs(60 * 5),
     Duration::from_secs(60 * 10),
@@ -65,11 +66,12 @@ const fn cur_poll_idx(duration: Duration) -> usize {
     retvl
 }
 
-pub struct HomepageState<'a> {
+pub struct HomepageState {
     daemon_installed: bool,
     pressed: bool,
     selection: HomePageSelection,
-    cfg: &'a mut Config,
+    app_state: ApplicationState,
+    poll_interval: ParseableDuration,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
@@ -116,24 +118,26 @@ impl HomePageSelection {
     }
 }
 
-impl<'a> HomepageState<'a> {
-    pub async fn new(cfg: &'a mut Config) -> Result<Self, anyhow::Error> {
+impl HomepageState {
+    pub async fn new(cfg: ApplicationState) -> Result<Self, anyhow::Error> {
         let mut retvl = Self {
-            cfg,
+            app_state: cfg,
             daemon_installed: false,
             pressed: false,
             selection: HomePageSelection::default(),
+            poll_interval: ParseableDuration::new(Duration::ZERO),
         };
         retvl.reload().await?;
         Ok(retvl)
     }
     async fn reload(&mut self) -> Result<(), anyhow::Error> {
         self.daemon_installed = daemon_is_installed().await?;
+        self.poll_interval = self.app_state.config().await.system.poll_interval;
         Ok(())
     }
 }
 
-impl ViewState for HomepageState<'_> {
+impl ViewState for HomepageState {
     async fn up(&mut self) -> Result<(), anyhow::Error> {
         self.selection = self.selection.up();
         Ok(())
@@ -144,11 +148,14 @@ impl ViewState for HomepageState<'_> {
     }
     async fn left(&mut self) -> Result<(), anyhow::Error> {
         if self.selection == HomePageSelection::PollTimeSelection {
-            let cur_poll_idx = cur_poll_idx(*self.cfg.system.poll_interval);
+            let cur_poll_idx = cur_poll_idx(*self.app_state.config().await.system.poll_interval);
             let prev_poll_idx = cur_poll_idx.saturating_sub(1);
-            self.cfg.system.poll_interval = POLL_TIME_OPTIONS[prev_poll_idx].into();
-            //TODO: signal the daemon via the domain socket
-            self.cfg.save_current_platform().await?;
+            self.app_state
+                .modify_and_save_cfg(move |cfg: &mut Config| {
+                    cfg.system.poll_interval = POLL_TIME_OPTIONS[prev_poll_idx].into();
+                    future::ready(())
+                })
+                .await?;
         } else {
             self.selection = self.selection.left();
         }
@@ -156,11 +163,14 @@ impl ViewState for HomepageState<'_> {
     }
     async fn right(&mut self) -> Result<(), anyhow::Error> {
         if self.selection == HomePageSelection::PollTimeSelection {
-            let cur_poll_idx = cur_poll_idx(*self.cfg.system.poll_interval);
+            let cur_poll_idx = cur_poll_idx(*self.app_state.config().await.system.poll_interval);
             let next_poll_idx = (POLL_TIME_OPTIONS.len() - 1).min(cur_poll_idx + 1);
-            self.cfg.system.poll_interval = POLL_TIME_OPTIONS[next_poll_idx].into();
-            //TODO: signal the daemon via the domain socket
-            self.cfg.save_current_platform().await?;
+            self.app_state
+                .modify_and_save_cfg(move |cfg: &mut Config| {
+                    cfg.system.poll_interval = POLL_TIME_OPTIONS[next_poll_idx].into();
+                    future::ready(())
+                })
+                .await?;
         } else {
             self.selection = self.selection.right();
         }
@@ -214,7 +224,7 @@ impl ViewState for HomepageState<'_> {
             self.selection == HomePageSelection::ReinstallDaemon && self.pressed,
         );
 
-        let current_poll_time = self.cfg.system.poll_interval.to_string();
+        let current_poll_time = self.poll_interval.to_string();
         let poll_time_cfg = labelled_scrollable_options(
             "Poll time",
             current_poll_time,

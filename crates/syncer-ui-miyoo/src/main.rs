@@ -1,4 +1,4 @@
-use std::io;
+use std::{ops::Deref, sync::Arc};
 
 use buoyant::{
     environment::DefaultEnvironment,
@@ -19,17 +19,24 @@ use embedded_graphics::{
     prelude::{RgbColor, WebColors},
 };
 use embedded_vintage_fonts::FONT_24X32;
-use homepage::HomepageState;
-use miyoo_io::{InputReader, MiyooButton, MiyooButtonEvent, MiyooFramebuffer};
-use savelist::SavelistState;
-use syncer_model::{commands::DaemonCommand, config::Config, platforms::Platform};
-use tokio::{io::AsyncWriteExt, net::UnixStream};
+use socketproto::DaemonSocket;
+use tokio::sync::RwLock;
+
+use syncer_model::{
+    commands::{DaemonCommand, DaemonCommandBody},
+    config::Config,
+    platforms::Platform,
+};
 
 mod components;
 mod daemon;
 mod homepage;
+use homepage::HomepageState;
 mod miyoo_io;
+use miyoo_io::{InputReader, MiyooButton, MiyooButtonEvent, MiyooFramebuffer};
 mod savelist;
+mod socketproto;
+use savelist::SavelistState;
 mod utils;
 
 fn main() {
@@ -53,8 +60,8 @@ async fn async_main() {
     fb.clear(Rgb888::BLACK).unwrap();
     fb.flush().unwrap();
     let mut input = InputReader::new().unwrap();
-    let mut cfg = Config::load_current_platform().await.unwrap();
-    let mut view = FullViewState::new(&mut cfg).await.unwrap();
+    let cfg = ApplicationState::new().await.unwrap();
+    let mut view = FullViewState::new(cfg.clone()).await.unwrap();
 
     loop {
         let tree = view.build_view();
@@ -99,39 +106,25 @@ async fn async_main() {
             (MiyooButton::R | MiyooButton::Rz, MiyooButtonEvent::Pressed) => {
                 view = match view {
                     FullViewState::Homepage(_) => {
-                        FullViewState::SavesList(SavelistState::new(&mut cfg).await)
+                        FullViewState::SavesList(SavelistState::new(cfg.clone()).await)
                     }
                     FullViewState::SavesList(_) => {
-                        FullViewState::Homepage(HomepageState::new(&mut cfg).await.unwrap())
+                        FullViewState::Homepage(HomepageState::new(cfg.clone()).await.unwrap())
                     }
                 };
             }
             (MiyooButton::L | MiyooButton::Lz, MiyooButtonEvent::Pressed) => {
                 view = match view {
                     FullViewState::Homepage(_) => {
-                        FullViewState::SavesList(SavelistState::new(&mut cfg).await)
+                        FullViewState::SavesList(SavelistState::new(cfg.clone()).await)
                     }
                     FullViewState::SavesList(_) => {
-                        FullViewState::Homepage(HomepageState::new(&mut cfg).await.unwrap())
+                        FullViewState::Homepage(HomepageState::new(cfg.clone()).await.unwrap())
                     }
                 };
             }
             _ => {}
         }
-    }
-}
-
-pub struct DaemonSocket(UnixStream);
-
-impl DaemonSocket {
-    pub async fn new() -> Result<Self, io::Error> {
-        let platform = Platform::get();
-        let stream = UnixStream::connect(platform.socket_path()).await?;
-        Ok(Self(stream))
-    }
-    pub async fn send(&mut self, command: DaemonCommand) -> Result<(), io::Error> {
-        let command = command.serialize();
-        self.0.write_all(command.as_bytes()).await
     }
 }
 
@@ -157,18 +150,50 @@ pub trait ViewState {
     fn build_view(&self) -> impl EmbeddedGraphicsView<Rgb888> + Layout + '_;
 }
 
-pub enum FullViewState<'a> {
-    Homepage(HomepageState<'a>),
-    SavesList(SavelistState<'a>),
+#[derive(Debug, Clone)]
+pub struct ApplicationState {
+    cfg: Arc<RwLock<Config>>,
+    socket: DaemonSocket,
 }
 
-impl<'a> FullViewState<'a> {
-    pub async fn new(cfg: &'a mut Config) -> Result<Self, anyhow::Error> {
+impl ApplicationState {
+    pub async fn new() -> Result<Self, anyhow::Error> {
+        let cfg = Config::load_current_platform().await?;
+        let socket = DaemonSocket::new().await?;
+        Ok(Self {
+            cfg: Arc::new(RwLock::new(cfg)),
+            socket,
+        })
+    }
+    pub async fn config(&self) -> impl Deref<Target = Config> {
+        self.cfg.read().await
+    }
+    pub async fn modify_and_save_cfg<F, R>(&self, cb: F) -> Result<R, anyhow::Error>
+    where
+        F: for<'a> AsyncFnOnce(&'a mut Config) -> R,
+    {
+        let mut lock = self.cfg.write().await;
+        let res = cb(&mut lock).await;
+        lock.save_current_platform().await?;
+        self.socket
+            .send(&DaemonCommand::new(DaemonCommandBody::DoSync))
+            .await?;
+        Ok(res)
+    }
+}
+
+pub enum FullViewState {
+    Homepage(HomepageState),
+    SavesList(SavelistState),
+}
+
+impl FullViewState {
+    pub async fn new(cfg: ApplicationState) -> Result<Self, anyhow::Error> {
         Ok(Self::Homepage(HomepageState::new(cfg).await?))
     }
 }
 
-impl ViewState for FullViewState<'_> {
+impl ViewState for FullViewState {
     async fn up(&mut self) -> Result<(), anyhow::Error> {
         use FullViewState::*;
         match self {
