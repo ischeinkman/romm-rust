@@ -4,18 +4,25 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-anyhow = {workspace = true}
-futures = {workspace = true}
-interprocess = {workspace = true}
-thiserror = {workspace = true}
+anyhow = { workspace = true }
+futures = { workspace = true }
+interprocess = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }
 
-syncer-model = {path = "../syncer-model"}
+syncer-model = { path = "../syncer-model" }
 
-buoyant = { version = "0.4.0", features = ["std"]}
+# UI framework
+buoyant = { version = "0.4.0", features = ["std"] }
+# Helper trait that sits between the raw framebuffer and UI framework; we're
+# basically cheating by treating the framebuffer as an embedded device from the
+# Rust crate ecosystem perspective.
 embedded-graphics = "0.8.1"
+# Has some nicer fonts
 embedded-vintage-fonts = "0.2.0"
+# Used for detecting button presses 
 evdev = { version = "0.13.0", features = ["tokio"] }
+# Used for interfacing directly with the linux framebuffer
 linuxfb = "0.3.1"
+# Used for detecting whether or not the daemon is running
 procfs = "0.17.0"
-

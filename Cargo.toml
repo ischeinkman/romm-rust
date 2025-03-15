@@ -3,19 +3,34 @@ resolver = "2"
 members = ["crates/romm-api", "crates/syncer-daemon", "crates/syncer-model", "crates/syncer-ui-miyoo"]
 
 [workspace.dependencies]
+# Standard catch-all error crate
 anyhow = "1.0.95"
+# Datetime formatting
 chrono = { version = "0.4.39", features = ["serde"] }
+# General utilities for working with `Future`s and `Stream`s
 futures = "0.3.31"
+# Used for communication between the daemon & UI over an OS-level named socket
 interprocess = { version = "2.2.3", features = ["tokio"] }
-serde = { version = "1.0.217", features = ["derive"] }
+# Used for serializing & deserializing app config, socket commands, API calls &
+# responses, etc
+serde = { version = "1.0.219", features = ["derive"] }
+# Used for ROMM API calls and as the format for communications over the daemon's
+# socket
 serde_json = "1.0.138"
+# Helper for creating bespoke error types when that is useful
 thiserror = "2.0.11"
-tokio = { version = "1.43.0", features = ["full"] }
+# Standard async runtime
+tokio = { version = "1.44.1", features = ["full"] }
+# Used as the format of the syncer's config file
 toml = "0.8.20"
+# Better logging for async contexts
 tracing = "0.1.41"
+# Better logging for async contexts
 tracing-subscriber = { version = "0.3.19", features = ["json", "env-filter"] }
+# Used for parsing the ROMM API URL
 url = { version = "2.5.4", features = ["serde"] }
 
+# Optimize for size for quick transfer
 [profile.release]
 strip = true
 lto = true

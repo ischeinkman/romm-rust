@@ -7,7 +7,8 @@ edition = "2021"
 anyhow = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
-interprocess = {workspace = true}
+interprocess = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
@@ -16,17 +17,22 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 url = { workspace = true }
 
+romm-api = { path = "../romm-api" }
+syncer-model = { path = "../syncer-model" }
+
+# Used as a quicker way to identify a particular save file's content and
+# therefore detect if a save file might have changed
 md-5 = "0.10.6"
-reqwest = { version = "0.12.12", default-features = false, features = [
+# Used for making API calls to the ROMM server
+reqwest = { version = "0.12.14", default-features = false, features = [
     "stream",
     "multipart",
     "rustls-tls",
     "http2",
     "charset",
 ] }
-rusqlite = { version = "0.33.0", features = ["bundled", "serde_json", "url", "chrono"] }
-serde = { version = "1.0.217", features = ["derive"] }
+# Used as the format for the sync metadata database, which we use for
+# determining when we need a sync and where to sync to
+rusqlite = { version = "0.34.0", features = ["bundled", "serde_json", "url", "chrono"] }
+# Used for triggering syncs when a save file changes
 notify = "8.0.0"
-
-romm-api = { path = "../romm-api" }
-syncer-model = { path = "../syncer-model" }
