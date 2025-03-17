@@ -150,6 +150,9 @@ pub enum ParseDurationError {
 impl FromStr for ParseableDuration {
     type Err = ParseDurationError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.eq_ignore_ascii_case("inf") {
+            return Ok(Self(Duration::MAX));
+        }
         let split = s.find(|c: char| !c.is_ascii_digit()).unwrap_or(s.len());
         let (n, suffix) = s.split_at(split);
         let coeff = DURATION_SUFFIXES
@@ -165,6 +168,9 @@ impl FromStr for ParseableDuration {
 
 impl fmt::Display for ParseableDuration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.0 == Duration::MAX {
+            return write!(f, "INF");
+        }
         let (n, suffix) = nanos_to_unitted(self.0.as_nanos());
         write!(f, "{n}{suffix}")
     }
