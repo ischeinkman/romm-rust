@@ -5,7 +5,7 @@ use interprocess::local_socket::traits::tokio::Listener as _;
 use interprocess::local_socket::{GenericFilePath, ListenerOptions, ToFsName};
 use tokio::io::AsyncReadExt;
 use tokio::task::JoinHandle;
-use tracing::error;
+use tracing::{debug, error};
 
 use syncer_model::commands::DaemonCommand;
 use syncer_model::platforms::Platform;
@@ -15,14 +15,11 @@ use crate::DaemonState;
 pub fn spawn_command_listen_thread(
     state: Arc<DaemonState>,
 ) -> Result<JoinHandle<()>, anyhow::Error> {
-    let listener = ListenerOptions::new()
-        .name(
-            Platform::get()
-                .socket_path()
-                .to_fs_name::<GenericFilePath>()?,
-        )
-        .create_tokio()?;
-
+    let path = Platform::get()
+        .socket_path()
+        .to_fs_name::<GenericFilePath>()?;
+    debug!("Opening command socket at {path:?}");
+    let listener = ListenerOptions::new().name(path).create_tokio()?;
     let handle = tokio::task::spawn(async move {
         loop {
             let next_stream = match listener.accept().await {
@@ -36,6 +33,7 @@ pub fn spawn_command_listen_thread(
             let _runner = tokio::task::spawn(handle_stream(state, next_stream));
         }
     });
+    debug!("Command socket spawned.");
     Ok(handle)
 }
 

@@ -1,5 +1,6 @@
-use std::{ops::Deref, sync::Arc};
+use std::{io, ops::Deref, sync::Arc};
 
+use anyhow::Context;
 use buoyant::{
     environment::DefaultEnvironment,
     layout::Layout,
@@ -158,8 +159,12 @@ pub struct ApplicationState {
 
 impl ApplicationState {
     pub async fn new() -> Result<Self, anyhow::Error> {
-        let cfg = Config::load_current_platform().await?;
-        let socket = DaemonSocket::new().await?;
+        let cfg = Config::load_current_platform()
+            .await
+            .context("Error loading config")?;
+        let socket = DaemonSocket::new()
+            .await
+            .context("Error opening daemon socket")?;
         Ok(Self {
             cfg: Arc::new(RwLock::new(cfg)),
             socket,
@@ -175,10 +180,18 @@ impl ApplicationState {
         let mut lock = self.cfg.write().await;
         let res = cb(&mut lock).await;
         lock.save_current_platform().await?;
-        self.socket
+        let socket_res = self
+            .socket
             .send(&DaemonCommand::new(DaemonCommandBody::DoSync))
-            .await?;
-        Ok(res)
+            .await;
+        match socket_res {
+            Ok(()) => Ok(res),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                //TODO: Log
+                Ok(res)
+            }
+            Err(e) => Err(e.into()),
+        }
     }
 }
 
