@@ -5,7 +5,7 @@ use interprocess::local_socket::traits::tokio::Listener as _;
 use interprocess::local_socket::{GenericFilePath, ListenerOptions, ToFsName};
 use tokio::io::AsyncReadExt;
 use tokio::task::JoinHandle;
-use tracing::{debug, error};
+use tracing::{debug, error, trace};
 
 use syncer_model::commands::DaemonCommand;
 use syncer_model::platforms::Platform;
@@ -19,7 +19,11 @@ pub fn spawn_command_listen_thread(
         .socket_path()
         .to_fs_name::<GenericFilePath>()?;
     debug!("Opening command socket at {path:?}");
-    let listener = ListenerOptions::new().name(path).create_tokio()?;
+    let listener = ListenerOptions::new()
+        .name(path)
+        .reclaim_name(false)
+        .create_tokio()?;
+    debug!("Command socket spawned.");
     let handle = tokio::task::spawn(async move {
         loop {
             let next_stream = match listener.accept().await {
@@ -33,11 +37,12 @@ pub fn spawn_command_listen_thread(
             let _runner = tokio::task::spawn(handle_stream(state, next_stream));
         }
     });
-    debug!("Command socket spawned.");
+    debug!("Command thread spawned.");
     Ok(handle)
 }
 
 async fn handle_stream(state: Arc<DaemonState>, mut stream: Stream) {
+    debug!("Received new connection on daemon command socket.");
     let mut buffer = Vec::new();
     loop {
         if let Err(e) = stream.read_buf(&mut buffer).await {
@@ -48,6 +53,7 @@ async fn handle_stream(state: Arc<DaemonState>, mut stream: Stream) {
         let new_start = loop {
             match des.next() {
                 Some(Ok(evt)) => {
+                    trace!("Parsed command from socket: {evt:?}");
                     state.run_command(&evt);
                 }
                 Some(Err(e)) if e.is_eof() => {

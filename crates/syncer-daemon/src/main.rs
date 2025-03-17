@@ -7,7 +7,7 @@ use tokio::{
     sync::{mpsc, watch},
     task::JoinHandle,
 };
-use tracing::{debug, error, info, level_filters::LevelFilter};
+use tracing::{debug, error, info, level_filters::LevelFilter, warn};
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, FmtSubscriber};
 
 use syncer_model::{
@@ -37,13 +37,13 @@ fn main() {
         return;
     }
     init_logger();
-    let rt = tokio::runtime::Builder::new_current_thread()
+    let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .unwrap();
     rt.block_on(async_main());
     debug!("Caught CTRL-C. Waiting for work to finish...");
-    rt.shutdown_timeout(Duration::from_millis(500));
+    rt.shutdown_timeout(Duration::from_millis(1000));
     debug!("Shutting down.");
 }
 
@@ -80,9 +80,11 @@ async fn async_main() {
     );
 
     let state = Arc::new(DaemonState::new());
-    let command_waiter = spawn_command_listen_thread(Arc::clone(&state)).unwrap();
-    tokio::task::spawn(command_waiter);
-    tokio::signal::ctrl_c().await.unwrap();
+    let _command_waiter = spawn_command_listen_thread(Arc::clone(&state)).unwrap();
+    wait_for_death().await.unwrap();
+    if let Err(e) = tokio::fs::remove_file(Platform::get().socket_path()).await {
+        warn!("Error cleaning up daemon socket: {e:?}");
+    }
     info!("Terminating because of sigterm.");
 }
 
@@ -254,4 +256,32 @@ async fn do_sync() -> Result<(), anyhow::Error> {
 
     run_sync(&cfg, &cl, &db).await?;
     Ok(())
+}
+
+#[cfg(unix)]
+async fn wait_for_death() -> Result<(), anyhow::Error> {
+    use tokio::signal::unix;
+    use tracing::trace;
+    let mut sigint = unix::signal(unix::SignalKind::interrupt())?;
+    let mut sigterm = unix::signal(unix::SignalKind::terminate())?;
+    let sigint = sigint.recv();
+    let sigterm = sigterm.recv();
+    futures::pin_mut!(sigint);
+    futures::pin_mut!(sigterm);
+    trace!("Now waiting for SIGINT or SIGTERM.");
+    tokio::select! {
+        _ = sigint => {
+            trace!("Encountered SIGINT. Now dying...");
+            Ok(())
+        }
+        _ = sigterm => {
+            trace!("Encountered SIGTERM. Now dying...");
+            Ok(())
+        }
+    }
+}
+
+#[cfg(not(unix))]
+async fn wait_for_death() -> Result<(), anyhow::Error> {
+    todo!()
 }
