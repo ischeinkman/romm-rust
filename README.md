@@ -9,6 +9,33 @@ server.
 
 ### Miyoo Mini
 
+To install the syncer on your Miyoo Mini: 
+
+1. Generate your Authorization header. At the time of writing the only way to do
+   this consistently is to base64 your `$USERNAME:$PASSWORD` string and then put
+   the word `Basic` in front; for example, if your username is `admin` and your
+   password is `admin`, your Authorization header would be `Basic
+   YWRtaW46YWRtaW4K`.
+2. Download the `sync-saver-miyoo.zip` file from the [releases
+   page](https://github.com/ischeinkman/romm-syncer/releases).
+3. Extract the zip file under `/mnt/SDCARD/App/Romm_Save_Syncer` (or whatever
+   you want to call it). 
+4. Modify `/mnt/SDCARD/App/Romm_Save_Syncer/config.toml` using a text editor to
+   set the `system.url` to your Romm server's URl and `system.api-key` to the
+   key generated in step 1. 
+5. On your Miyoo Mini, go into `Apps`. You should see a new application called `Romm Save Syncer` in the list. Open it. 
+6. From here you can:
+   * Start & stop the syncer daemon
+   * Install a shim wrapper so the syncer daemon starts at every boot instead of
+     needing to be restarted manually whenever the Miyoo Mini reboots, or
+     uninstall the shim so it doesn't
+   * Change how often the sync status is polled and whether or not a filesystem
+     notification changes a save
+   * Enable & disable syncing for specific saves 
+
+Log files for the configuration UI, the daemon, and the shim are all saved
+alongside the application file under `/mnt/SDCARD/App/Romm_Save_Syncer` as a
+variety of `.out` and `.err` files. 
 
 ## Building
 
