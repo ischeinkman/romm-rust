@@ -7,7 +7,11 @@ if [ "$0" == "" ]; then
     exit -1; 
 fi
 
-SYNCER_ROOT="$(dirname "$0")"
+TRUE_ROOT="$(readlink -f "$0")"
+SYNCER_ROOT="$(dirname "$TRUE_ROOT")"
+
+exec 1>>"$SYNCER_ROOT/daemon-wrapper.out"
+exec 2>>"$SYNCER_ROOT/daemon-wrapper.err"
 
 if [ ! -d "$SYNCER_ROOT" ]; then 
     echo "ERROR: Could not find syncer root; path $SYNCER_ROOT does not exist." >&2;

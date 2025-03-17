@@ -14,7 +14,7 @@ const SERVICE_PATH: &str = "./start-daemon.sh";
 /// * Telling the operating system to start the daemon on boot.
 /// * Starting the daemon now.
 pub async fn install_daemon() -> Result<(), DaemonError> {
-    fs::copy(SERVICE_PATH, SERVICE_INSTALL_PATH).await?;
+    fs::symlink(SERVICE_INSTALL_PATH, SERVICE_INSTALL_PATH).await?;
     start_daemon().await?;
     Ok(())
 }
