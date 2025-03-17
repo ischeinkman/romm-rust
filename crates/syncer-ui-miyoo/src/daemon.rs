@@ -79,9 +79,24 @@ pub async fn daemon_is_running() -> Result<bool, DaemonError> {
     let task = || {
         let expected = Path::new(DAEMON_EXE_PATH).canonicalize()?;
         let procs = process::all_processes()?;
-        for proc in procs {
+        let skip_not_found = procs.filter(|p| !matches!(p, Err(ProcError::NotFound(_))));
+        for proc in skip_not_found {
             let proc = proc?;
-            let exe_path = proc.exe()?.canonicalize()?;
+            let exe_path = match proc.exe() {
+                Ok(pt) => pt,
+
+                // Not all processes have an /exe symlink; skip those without
+                // one.
+                Err(ProcError::NotFound(_)) => {
+                    continue;
+                }
+                Err(ProcError::Io(e, _)) if e.kind() == io::ErrorKind::NotFound => {
+                    continue;
+                }
+                Err(e) => {
+                    return Err(e.into());
+                }
+            };
             if exe_path == expected {
                 return Ok(true);
             }
