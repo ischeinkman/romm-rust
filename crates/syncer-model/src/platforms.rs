@@ -94,7 +94,7 @@ impl Platform {
     /// The place to open the named socket on the platform.
     pub fn socket_path(&self) -> String {
         match *self {
-            Platform::MiyooMiniOnion => "daemon-socket.socket".into(),
+            Platform::MiyooMiniOnion => "/tmp/rom-syncer-daemon.socket".into(),
             Platform::Linux => "~/.config/romm-syncer/daemon-socket.socket".into(),
             _ => todo!("Platform not yet supported"),
         }
