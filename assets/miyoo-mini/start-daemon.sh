@@ -2,13 +2,13 @@
 
 set -euo pipefail 
 
-if [ "$0" == "" ]; then 
+SYNCER_FILE="$(find /mnt/SDCARD/App -type f -name 'syncer-daemon')"
+SYNCER_ROOT="$(dirname "$SYNCER_FILE")"
+
+if [ "$SYNCER_ROOT" == "" ]; then 
     echo "ERROR: Could not determine run root." >&2;
     exit -1; 
 fi
-
-TRUE_ROOT="$(readlink -f "$0")"
-SYNCER_ROOT="$(dirname "$TRUE_ROOT")"
 
 exec 1>>"$SYNCER_ROOT/daemon-wrapper.out"
 exec 2>>"$SYNCER_ROOT/daemon-wrapper.err"
