@@ -2,6 +2,9 @@
 resolver = "2"
 members = ["crates/romm-api", "crates/syncer-daemon", "crates/syncer-model", "crates/syncer-ui-miyoo"]
 
+[workspace.package]
+license = "MIT OR Apache-2.0"
+
 [workspace.dependencies]
 # Standard catch-all error crate
 anyhow = "1.0.95"
