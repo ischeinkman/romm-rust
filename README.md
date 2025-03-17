@@ -1,7 +1,8 @@
 # Simple Romm Syncer
 
-An **IN PROGRESS** tool for syncing saves between the local device and a remote
-ROMM server.
+An **unofficial, third party, not-officially-supported, and above all IN
+PROGRESS** tool for syncing saves between the local device and a remote ROMM
+server.
 
 
 ## Usage
