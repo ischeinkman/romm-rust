@@ -34,6 +34,7 @@
 
 use std::time::Duration;
 
+use anyhow::Context;
 use buoyant::{
     layout::Layout,
     render::EmbeddedGraphicsView,
@@ -52,7 +53,6 @@ use crate::{
 };
 
 const POLL_TIME_OPTIONS: &[Duration] = &[
-    Duration::MAX, // Disabled
     Duration::from_secs(60),
     Duration::from_secs(60 * 5),
     Duration::from_secs(60 * 10),
@@ -62,6 +62,7 @@ const POLL_TIME_OPTIONS: &[Duration] = &[
     Duration::from_secs(60 * 60 * 2),
     Duration::from_secs(60 * 60 * 4),
     Duration::from_secs(60 * 60 * 8),
+    Duration::MAX, // Disabled
 ];
 
 const fn cur_poll_idx(duration: Duration) -> usize {
@@ -147,8 +148,12 @@ impl HomepageState {
         Ok(retvl)
     }
     async fn reload(&mut self) -> Result<(), anyhow::Error> {
-        self.daemon_installed = daemon_is_installed().await?;
-        self.daemon_running = daemon_is_running().await?;
+        self.daemon_installed = daemon_is_installed()
+            .await
+            .context("Error checking daemon install state")?;
+        self.daemon_running = daemon_is_running()
+            .await
+            .context("Error checking daemon run state")?;
         let cfg = self.app_state.config().await;
         self.poll_interval = cfg.system.poll_interval;
         self.fs_notify_enabled = cfg.system.sync_on_file_change;
@@ -175,6 +180,7 @@ impl ViewState for HomepageState {
                     future::ready(())
                 })
                 .await?;
+            self.reload().await?;
         } else {
             self.selection = self.selection.left();
         }
@@ -190,6 +196,7 @@ impl ViewState for HomepageState {
                     future::ready(())
                 })
                 .await?;
+            self.reload().await?;
         } else {
             self.selection = self.selection.right();
         }
