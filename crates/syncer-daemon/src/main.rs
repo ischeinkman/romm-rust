@@ -42,6 +42,9 @@ fn main() {
         .build()
         .unwrap();
     rt.block_on(async_main());
+    debug!("Caught CTRL-C. Waiting for work to finish...");
+    rt.shutdown_timeout(Duration::from_millis(500));
+    debug!("Shutting down.");
 }
 
 fn init_logger() {
@@ -78,7 +81,9 @@ async fn async_main() {
 
     let state = Arc::new(DaemonState::new());
     let command_waiter = spawn_command_listen_thread(Arc::clone(&state)).unwrap();
-    command_waiter.await.unwrap();
+    tokio::task::spawn(command_waiter);
+    tokio::signal::ctrl_c().await.unwrap();
+    info!("Terminating because of sigterm.");
 }
 
 pub struct DaemonState {
