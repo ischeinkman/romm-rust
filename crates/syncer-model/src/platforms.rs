@@ -86,7 +86,7 @@ impl Platform {
     pub fn config_save_path(&self) -> &Path {
         match self {
             Platform::MiyooMiniOnion => Path::new("config.toml"),
-            Platform::Linux => Path::new("~/.config.romm-syncer/config.toml"),
+            Platform::Linux => Path::new("~/.config/romm-syncer/config.toml"),
             _ => todo!("Platform not yet supported"),
         }
     }
