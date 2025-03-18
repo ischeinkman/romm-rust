@@ -32,7 +32,7 @@
 //!   -----------       -----------
 //! ```
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use anyhow::Context;
 use buoyant::{
@@ -45,11 +45,14 @@ use embedded_vintage_fonts::FONT_24X32;
 use futures::future;
 use syncer_model::config::{Config, ParseableDuration};
 
-use crate::daemon::{daemon_is_installed, install_daemon, reinstall_daemon, uninstall_daemon};
-use crate::{ApplicationState, ViewState};
+use crate::{ApplicationState, ViewState, utils::BackgroundTask};
 use crate::{
     components::{button, labeled_checkbox},
     daemon::{daemon_is_running, start_daemon, stop_daemon},
+};
+use crate::{
+    daemon::{daemon_is_installed, install_daemon, reinstall_daemon, uninstall_daemon},
+    utils::QuickReadSlot,
 };
 
 const POLL_TIME_OPTIONS: &[Duration] = &[
@@ -77,13 +80,11 @@ const fn cur_poll_idx(duration: Duration) -> usize {
 }
 
 pub struct HomepageState {
-    daemon_installed: bool,
-    daemon_running: bool,
-    fs_notify_enabled: bool,
     pressed: bool,
     selection: HomePageSelection,
     app_state: ApplicationState,
-    poll_interval: ParseableDuration,
+    external_state: Arc<QuickReadSlot<ExternalState>>,
+    _external_state_poller: BackgroundTask,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
@@ -135,28 +136,30 @@ impl HomePageSelection {
 
 impl HomepageState {
     pub async fn new(cfg: ApplicationState) -> Result<Self, anyhow::Error> {
+        let external_state = Arc::new(QuickReadSlot::new(ExternalState::new(cfg.clone()).await?));
+        let es = Arc::clone(&external_state);
+        let _external_state_poller = BackgroundTask::new(async move |flag| {
+            while !flag.should_stop() {
+                if let Err(_e) = es.modify_with(async |state| state.reload().await).await {
+                    //TODO: Log
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        });
         let mut retvl = Self {
-            app_state: cfg,
-            daemon_installed: false,
-            daemon_running: false,
-            fs_notify_enabled: false,
+            app_state: cfg.clone(),
             pressed: false,
             selection: HomePageSelection::default(),
-            poll_interval: ParseableDuration::new(Duration::ZERO),
+            external_state,
+            _external_state_poller,
         };
         retvl.reload().await?;
         Ok(retvl)
     }
     async fn reload(&mut self) -> Result<(), anyhow::Error> {
-        self.daemon_installed = daemon_is_installed()
-            .await
-            .context("Error checking daemon install state")?;
-        self.daemon_running = daemon_is_running()
-            .await
-            .context("Error checking daemon run state")?;
-        let cfg = self.app_state.config().await;
-        self.poll_interval = cfg.system.poll_interval;
-        self.fs_notify_enabled = cfg.system.sync_on_file_change;
+        self.external_state
+            .modify_with(async |state| state.reload().await)
+            .await?;
         Ok(())
     }
 }
@@ -208,6 +211,7 @@ impl ViewState for HomepageState {
     }
     async fn release(&mut self) -> Result<(), anyhow::Error> {
         use HomePageSelection::*;
+        let external_state = self.external_state.read().clone();
         match self.selection {
             ReinstallDaemon => {
                 reinstall_daemon().await?;
@@ -217,7 +221,7 @@ impl ViewState for HomepageState {
                 uninstall_daemon().await?;
                 self.reload().await?;
             }
-            DaemonInstalledBox if self.daemon_installed => {
+            DaemonInstalledBox if external_state.daemon_installed => {
                 uninstall_daemon().await?;
                 self.reload().await?;
             }
@@ -225,7 +229,7 @@ impl ViewState for HomepageState {
                 install_daemon().await?;
                 self.reload().await?;
             }
-            DaemonRunningBox if self.daemon_running => {
+            DaemonRunningBox if external_state.daemon_running => {
                 stop_daemon().await?;
                 self.reload().await?;
             }
@@ -236,7 +240,7 @@ impl ViewState for HomepageState {
             FsnotifyBox => {
                 self.app_state
                     .modify_and_save_cfg(|cfg: &mut Config| {
-                        cfg.system.sync_on_file_change = !self.fs_notify_enabled;
+                        cfg.system.sync_on_file_change = !external_state.fs_notify_enabled;
                         future::ready(())
                     })
                     .await?;
@@ -248,49 +252,15 @@ impl ViewState for HomepageState {
         Ok(())
     }
     fn build_view(&self) -> impl EmbeddedGraphicsView<Rgb888> + Layout + '_ {
-        let installed_box = labeled_checkbox(
-            "Daemon installed",
-            self.selection == HomePageSelection::DaemonInstalledBox,
-            self.daemon_installed,
-        );
-        let running_box = labeled_checkbox(
-            "Daemon Running",
-            self.selection == HomePageSelection::DaemonRunningBox,
-            self.daemon_running,
-        );
-        let uninstall_btn = button(
-            "Uninstall",
-            self.selection == HomePageSelection::UninstallDaemon,
-            self.selection == HomePageSelection::UninstallDaemon && self.pressed,
-        );
-        let reinstall_btn = button(
-            "Reinstall",
-            self.selection == HomePageSelection::ReinstallDaemon,
-            self.selection == HomePageSelection::ReinstallDaemon && self.pressed,
-        );
-
-        let current_poll_time = self.poll_interval.to_string();
-        let poll_time_cfg = labelled_scrollable_options(
-            "Poll time",
-            current_poll_time,
-            self.selection == HomePageSelection::PollTimeSelection,
-        );
-
-        let fs_notify_box = labeled_checkbox(
-            "Sync on change",
-            self.selection == HomePageSelection::FsnotifyBox,
-            self.fs_notify_enabled,
-        );
-
-        let btns = HStack::new((reinstall_btn, uninstall_btn));
-        VStack::new((
-            installed_box,
-            running_box,
-            poll_time_cfg,
-            fs_notify_box,
-            btns,
-        ))
-        .frame()
+        let state = self.external_state.read();
+        build_view(
+            self.selection,
+            self.pressed,
+            state.daemon_installed,
+            state.daemon_running,
+            state.poll_interval,
+            state.fs_notify_enabled,
+        )
     }
 }
 
@@ -334,4 +304,92 @@ fn labelled_scrollable_options<'a>(
     HStack::new((label, Spacer::default(), scrollable))
         .flex_frame()
         .with_infinite_max_width()
+}
+
+fn build_view(
+    selection: HomePageSelection,
+    pressed: bool,
+    daemon_installed: bool,
+    daemon_running: bool,
+    poll_interval: ParseableDuration,
+    fs_notify_enabled: bool,
+) -> impl EmbeddedGraphicsView<Rgb888> + Layout {
+    let installed_box = labeled_checkbox(
+        "Daemon installed",
+        selection == HomePageSelection::DaemonInstalledBox,
+        daemon_installed,
+    );
+    let running_box = labeled_checkbox(
+        "Daemon Running",
+        selection == HomePageSelection::DaemonRunningBox,
+        daemon_running,
+    );
+    let uninstall_btn = button(
+        "Uninstall",
+        selection == HomePageSelection::UninstallDaemon,
+        selection == HomePageSelection::UninstallDaemon && pressed,
+    );
+    let reinstall_btn = button(
+        "Reinstall",
+        selection == HomePageSelection::ReinstallDaemon,
+        selection == HomePageSelection::ReinstallDaemon && pressed,
+    );
+
+    let current_poll_time = poll_interval.to_string();
+    let poll_time_cfg = labelled_scrollable_options(
+        "Poll time",
+        current_poll_time,
+        selection == HomePageSelection::PollTimeSelection,
+    );
+
+    let fs_notify_box = labeled_checkbox(
+        "Sync on change",
+        selection == HomePageSelection::FsnotifyBox,
+        fs_notify_enabled,
+    );
+
+    let btns = HStack::new((reinstall_btn, uninstall_btn));
+    VStack::new((
+        installed_box,
+        running_box,
+        poll_time_cfg,
+        fs_notify_box,
+        btns,
+    ))
+    .frame()
+}
+
+#[derive(Clone)]
+struct ExternalState {
+    daemon_installed: bool,
+    daemon_running: bool,
+    fs_notify_enabled: bool,
+    app_state: ApplicationState,
+    poll_interval: ParseableDuration,
+}
+
+impl ExternalState {
+    pub async fn new(app_state: ApplicationState) -> Result<Self, anyhow::Error> {
+        let mut retvl = Self {
+            daemon_installed: false,
+            daemon_running: false,
+            fs_notify_enabled: false,
+            app_state,
+            poll_interval: ParseableDuration::new(Duration::default()),
+        };
+        retvl.reload().await?;
+        Ok(retvl)
+    }
+    pub async fn reload(&mut self) -> Result<(), anyhow::Error> {
+        self.daemon_installed = daemon_is_installed()
+            .await
+            .context("Error checking daemon install state")?;
+        self.daemon_running = daemon_is_running()
+            .await
+            .context("Error checking daemon run state")?;
+        let cfg = self.app_state.config().await;
+        self.poll_interval = cfg.system.poll_interval;
+        self.fs_notify_enabled = cfg.system.sync_on_file_change;
+        Ok(())
+    }
 }
