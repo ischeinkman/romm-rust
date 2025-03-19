@@ -104,6 +104,14 @@ async fn async_main() {
             (MiyooButton::Menu, MiyooButtonEvent::Pressed) => {
                 break;
             }
+            (MiyooButton::B, MiyooButtonEvent::Pressed) => {
+                view = match view {
+                    FullViewState::Homepage(_) => {
+                        return;
+                    }
+                    _ => FullViewState::Homepage(HomepageState::new(cfg.clone()).await.unwrap()),
+                };
+            }
             (MiyooButton::R | MiyooButton::Rz, MiyooButtonEvent::Pressed) => {
                 view = match view {
                     FullViewState::Homepage(_) => {
