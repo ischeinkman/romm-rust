@@ -138,7 +138,7 @@ pub struct RommConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<Url>,
     /// The authorization header to use when making API calls.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, alias = "api-key", skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
     /// The format string used for reading & uploading file names to ROMM.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -245,18 +245,27 @@ pub struct SystemConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub deny: Vec<PathBuf>,
     /// Whether or not we should ignore hidden files; defaults to `true`.
-    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    #[serde(
+        default = "default_true",
+        alias = "skip-hidden",
+        skip_serializing_if = "is_true"
+    )]
     pub skip_hidden: bool,
     /// Where to put the local sync database, used for checking for modification
     /// conflicts and keep a record of updates.
     pub database: Option<PathBuf>,
 
     /// How often the daemon should poll the host & server for changes.
+    #[serde(alias = "poll-interval")]
     pub poll_interval: ParseableDuration,
 
     /// If true, we use a filesystem notification library to sync whenever a
     /// save file changes locally on disk.
-    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    #[serde(
+        default = "default_true",
+        alias = "sync-on-file-change",
+        skip_serializing_if = "is_true"
+    )]
     pub sync_on_file_change: bool,
 }
 
