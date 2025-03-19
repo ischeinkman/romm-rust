@@ -26,5 +26,6 @@ if [ ! -f "./syncer-daemon" ]; then
 fi
 export NO_COLOR=1
 export ROM_SYNC_LOG=trace
-export RUST_BACKTRACE=1
+export RUST_BACKTRACE=full
+export TOKIO_WORKER_THREADS=4
 ./syncer-daemon > "$SYNCER_ROOT/daemon-log.out" 2> "$SYNCER_ROOT/daemon-log.err" & 
