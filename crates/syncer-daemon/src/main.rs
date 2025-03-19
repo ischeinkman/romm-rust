@@ -72,7 +72,9 @@ fn init_logger() {
 #[tracing::instrument]
 async fn async_main() {
     let cfg = load_config().await.unwrap();
-    let db = SaveMetaDatabase::open(cfg.system.database.as_deref().unwrap()).unwrap();
+    let db = SaveMetaDatabase::open(cfg.system.database.as_deref().unwrap())
+        .await
+        .unwrap();
     info!("Starting with config: {cfg:?}");
     let cl = RommClient::new(
         cfg.romm.url.clone().unwrap(),
@@ -246,7 +248,7 @@ async fn load_config() -> Result<Config, anyhow::Error> {
 async fn do_sync() -> Result<(), anyhow::Error> {
     info!("Performing sync.");
     let cfg = load_config().await?;
-    let db = SaveMetaDatabase::open(cfg.system.database.as_deref().unwrap())?;
+    let db = SaveMetaDatabase::open(cfg.system.database.as_deref().unwrap()).await?;
     debug!("Performing sync with config: {cfg:?}");
     let cl = RommClient::new(
         cfg.romm.url.clone().unwrap(),

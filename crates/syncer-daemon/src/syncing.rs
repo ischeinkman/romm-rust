@@ -67,11 +67,13 @@ pub async fn run_sync_for_save(
         }
     };
 
-    let db_data = db.query_metadata(
-        device_meta.meta.rom(),
-        &device_meta.meta.name,
-        device_meta.meta.emulator.as_deref(),
-    )?;
+    let db_data = db
+        .query_metadata(
+            device_meta.meta.rom(),
+            &device_meta.meta.name,
+            device_meta.meta.emulator.as_deref(),
+        )
+        .await?;
     let action = decide_action(&device_meta.meta, &romm_meta.meta, &db_data)?;
     perform_action(
         &action,
@@ -119,7 +121,7 @@ pub async fn perform_action(
         }
     };
     if action.needs_db_resync() {
-        db.upsert_metadata(new_meta)?;
+        db.upsert_metadata(new_meta).await?;
     }
     Ok(())
 }
