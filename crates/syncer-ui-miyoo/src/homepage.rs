@@ -1,36 +1,4 @@
-//! The home tab of the UI, used for installing & uninstalling the daemon.
-//!
-//! Current UI & navigation:
-//!
-//! ```text
-//!  -------------------------------
-//! | Daemon installed checkbox |o| |
-//!  -------------------------------
-//!              ^
-//!              |
-//!              v
-//!  -------------------------------
-//! | Daemon running checkbox   |o| |
-//!  -------------------------------
-//!              ^
-//!              |
-//!              v
-//!  -------------------------------
-//! | Poll time             < 30m > |
-//!  -------------------------------
-//!              ^
-//!              |
-//!              v
-//!  -------------------------------
-//! | Enable fsnotify?        |o|   |
-//!  -------------------------------
-//!     ^                   ^
-//!     |                   |
-//!     v                   v
-//!   -----------       -----------
-//!  | Reinstall | <-> | Uninstall |
-//!   -----------       -----------
-//! ```
+//! The home tab of the UI, used for installing & uninstalling the daemon and manually triggering resyncs.
 
 use std::{sync::Arc, time::Duration};
 
@@ -43,7 +11,7 @@ use buoyant::{
 use embedded_graphics::{pixelcolor::Rgb888, prelude::RgbColor};
 use embedded_vintage_fonts::FONT_24X32;
 use futures::future;
-use syncer_model::config::{Config, ParseableDuration};
+use syncer_model::{commands::{DaemonCommand, DaemonCommandBody}, config::{Config, ParseableDuration}};
 
 use crate::{ApplicationState, ViewState, utils::BackgroundTask};
 use crate::{
@@ -97,13 +65,14 @@ enum HomePageSelection {
     FsnotifyBox,
     ReinstallDaemon,
     UninstallDaemon,
+    ForceSyncButton,
 }
 
 impl HomePageSelection {
     const fn up(&self) -> HomePageSelection {
         use HomePageSelection::*;
         match *self {
-            UninstallDaemon | ReinstallDaemon => FsnotifyBox,
+            UninstallDaemon | ReinstallDaemon | ForceSyncButton => FsnotifyBox,
             FsnotifyBox => PollTimeSelection,
             PollTimeSelection => DaemonRunningBox,
             DaemonRunningBox => DaemonInstalledBox,
@@ -118,19 +87,27 @@ impl HomePageSelection {
             DaemonRunningBox => PollTimeSelection,
             PollTimeSelection => FsnotifyBox,
             FsnotifyBox => ReinstallDaemon,
-            ReinstallDaemon | UninstallDaemon => Nothing,
+            ReinstallDaemon | UninstallDaemon | ForceSyncButton => Nothing,
         }
     }
     const fn left(&self) -> HomePageSelection {
         use HomePageSelection::*;
         match *self {
-            ReinstallDaemon => UninstallDaemon,
-            UninstallDaemon => ReinstallDaemon,
-            other => other,
+            ReinstallDaemon => ForceSyncButton, 
+            ForceSyncButton => UninstallDaemon, 
+            UninstallDaemon => ReinstallDaemon, 
+            other => other, 
         }
     }
     const fn right(&self) -> HomePageSelection {
-        self.left()
+        use HomePageSelection::*;
+        match *self {
+            ReinstallDaemon => UninstallDaemon, 
+            UninstallDaemon => ForceSyncButton, 
+            ForceSyncButton => ReinstallDaemon, 
+            other => other,
+        }
+        
     }
 }
 
@@ -219,6 +196,10 @@ impl ViewState for HomepageState {
             }
             UninstallDaemon => {
                 uninstall_daemon().await?;
+                self.reload().await?;
+            }
+            ForceSyncButton => {
+                self.app_state.socket.send(&DaemonCommand::new(DaemonCommandBody::DoSync)).await?;
                 self.reload().await?;
             }
             DaemonInstalledBox if external_state.daemon_installed => {
