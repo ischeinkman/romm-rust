@@ -11,12 +11,8 @@ package-miyoo-zip: package-miyoo
 alias release-miyoo := package-miyoo-zip
 
 [group('package')]
-package-miyoo: package-miyoo-clean build-miyoo 
+add-keys: package-miyoo 
     #!/bin/bash 
-    if [ ! -d .build ]; then mkdir .build; fi
-    cp -r assets/miyoo-mini .build/sync-saver
-    cp target/arm-unknown-linux-musleabihf/release/syncer-daemon .build/sync-saver
-    cp target/arm-unknown-linux-musleabihf/release/syncer-ui-miyoo .build/sync-saver
     if [ -z "$ROMM_URL" ]; 
         then echo "WARNING: $ROMM_URL not set; add to the config manually." >&2; 
         else sed -i "s%.*\$ROMM_URL.*%url = \"$ROMM_URL\"%" .build/sync-saver/config.toml;
@@ -25,6 +21,16 @@ package-miyoo: package-miyoo-clean build-miyoo
         then echo "WARNING: $ROMM_API_KEY not set; add to the config manually." >&2; 
         else sed -i "s%.*\$ROMM_API_KEY.*%api_key = \"$ROMM_API_KEY\"%" .build/sync-saver/config.toml
     fi 
+
+alias ppkg := add-keys 
+
+[group('package')]
+package-miyoo: package-miyoo-clean build-miyoo 
+    #!/bin/bash 
+    if [ ! -d .build ]; then mkdir .build; fi
+    cp -r assets/miyoo-mini .build/sync-saver
+    cp target/arm-unknown-linux-musleabihf/release/syncer-daemon .build/sync-saver
+    cp target/arm-unknown-linux-musleabihf/release/syncer-ui-miyoo .build/sync-saver
     echo "Finished building the package under /.build/sync-saver"
 
 alias pkg := package-miyoo

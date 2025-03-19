@@ -2,12 +2,12 @@
 # The URL of the remote ROMM server
 #
 # Must be set externally on the Miyoo Mini
-#url = "$ROMM_URL"
+url = "$ROMM_URL"
 
 # The Authorization header used to talk to the ROMM server
 #
 # Must be set externally on the Miyoo Mini
-#api-key = "$ROMM_API_KEY"
+api-key = "$ROMM_API_KEY"
 
 # The template used for finding saves to sync & pushing saves back to ROMM
 #
