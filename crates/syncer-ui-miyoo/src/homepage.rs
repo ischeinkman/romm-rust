@@ -1,6 +1,6 @@
 //! The home tab of the UI, used for installing & uninstalling the daemon and manually triggering resyncs.
 
-use std::{sync::Arc, time::Duration};
+use std::{io, sync::Arc, time::Duration};
 
 use anyhow::Context;
 use buoyant::{
@@ -11,7 +11,10 @@ use buoyant::{
 use embedded_graphics::{pixelcolor::Rgb888, prelude::RgbColor};
 use embedded_vintage_fonts::FONT_24X32;
 use futures::future;
-use syncer_model::{commands::{DaemonCommand, DaemonCommandBody}, config::{Config, ParseableDuration}};
+use syncer_model::{
+    commands::{DaemonCommand, DaemonCommandBody},
+    config::{Config, ParseableDuration},
+};
 
 use crate::{ApplicationState, ViewState, utils::BackgroundTask};
 use crate::{
@@ -93,21 +96,20 @@ impl HomePageSelection {
     const fn left(&self) -> HomePageSelection {
         use HomePageSelection::*;
         match *self {
-            ReinstallDaemon => ForceSyncButton, 
-            ForceSyncButton => UninstallDaemon, 
-            UninstallDaemon => ReinstallDaemon, 
-            other => other, 
+            ReinstallDaemon => ForceSyncButton,
+            ForceSyncButton => UninstallDaemon,
+            UninstallDaemon => ReinstallDaemon,
+            other => other,
         }
     }
     const fn right(&self) -> HomePageSelection {
         use HomePageSelection::*;
         match *self {
-            ReinstallDaemon => UninstallDaemon, 
-            UninstallDaemon => ForceSyncButton, 
-            ForceSyncButton => ReinstallDaemon, 
+            ReinstallDaemon => UninstallDaemon,
+            UninstallDaemon => ForceSyncButton,
+            ForceSyncButton => ReinstallDaemon,
             other => other,
         }
-        
     }
 }
 
@@ -199,8 +201,22 @@ impl ViewState for HomepageState {
                 self.reload().await?;
             }
             ForceSyncButton => {
-                self.app_state.socket.send(&DaemonCommand::new(DaemonCommandBody::DoSync)).await?;
-                self.reload().await?;
+                let res = self
+                    .app_state
+                    .socket
+                    .send(&DaemonCommand::new(DaemonCommandBody::DoSync))
+                    .await;
+                match res {
+                    Ok(()) => {
+                        self.reload().await?;
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                        //TODO: Log
+                    }
+                    Err(e) => {
+                        return Err(e.into());
+                    }
+                }
             }
             DaemonInstalledBox if external_state.daemon_installed => {
                 uninstall_daemon().await?;
@@ -316,6 +332,12 @@ fn build_view(
         selection == HomePageSelection::ReinstallDaemon && pressed,
     );
 
+    let sync_btn = button(
+        "Force Sync",
+        selection == HomePageSelection::ForceSyncButton,
+        selection == HomePageSelection::ForceSyncButton && pressed,
+    );
+
     let current_poll_time = poll_interval.to_string();
     let poll_time_cfg = labelled_scrollable_options(
         "Poll time",
@@ -329,7 +351,7 @@ fn build_view(
         fs_notify_enabled,
     );
 
-    let btns = HStack::new((reinstall_btn, uninstall_btn));
+    let btns = HStack::new((reinstall_btn, uninstall_btn, sync_btn));
     VStack::new((
         installed_box,
         running_box,
