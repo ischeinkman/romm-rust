@@ -35,6 +35,6 @@ url = { version = "2.5.4", features = ["serde"] }
 
 # Optimize for size for quick transfer
 [profile.release]
-strip = true
+strip = false
 lto = true
 codegen-units = 1
