@@ -19,9 +19,11 @@ pub struct SaveMetaDatabase {
 
 impl SaveMetaDatabase {
     pub fn open(path: &Path) -> Result<Self, MigrationError> {
-        let mut con = Connection::open(path).map_err(MigrationError::from_raw)?;
-        apply_migrations(&mut con)?;
-        let con = Mutex::new(con);
+        let con = tokio::task::block_in_place(move || {
+            let mut con = Connection::open(path).map_err(MigrationError::from_raw)?;
+            apply_migrations(&mut con)?;
+            Result::<_, MigrationError>::Ok(Mutex::new(con))
+        })?;
         Ok(Self { con })
     }
 
@@ -54,44 +56,46 @@ impl SaveMetaDatabase {
         } else {
             &[rom, name]
         };
-        let con = self.con.lock().unwrap();
-        let mut stmt = con.prepare(&sql)?;
-        let mut rows = stmt.query_map(params_from_iter(params), |row| {
-            let name = row.get("name")?;
-            let rom = row.get("rom")?;
-            let ext = row.get("ext")?;
-            let emulator = row.get("emulator")?;
-            let created = row.get("created")?;
-            let updated = row.get("updated")?;
-            let hash = Md5Hash::from_raw(row.get("md5")?);
-            let size = row.get("size")?;
-            let res = SaveMeta {
-                rom,
-                name,
-                ext,
-                emulator,
-                created,
-                updated,
-                hash,
-                size,
-            };
-            Ok(res)
-        })?;
-        let ret = rows.next().transpose()?;
-        if rows.next().transpose()?.is_some() {
-            return Err(DatabaseError::TooManyRows {
-                count: 2 + rows.count(),
+        tokio::task::block_in_place(|| {
+            let con = self.con.lock().unwrap();
+            let mut stmt = con.prepare(&sql)?;
+            let mut rows = stmt.query_map(params_from_iter(params), |row| {
+                let name = row.get("name")?;
+                let rom = row.get("rom")?;
+                let ext = row.get("ext")?;
+                let emulator = row.get("emulator")?;
+                let created = row.get("created")?;
+                let updated = row.get("updated")?;
+                let hash = Md5Hash::from_raw(row.get("md5")?);
+                let size = row.get("size")?;
+                let res = SaveMeta {
+                    rom,
+                    name,
+                    ext,
+                    emulator,
+                    created,
+                    updated,
+                    hash,
+                    size,
+                };
+                Ok(res)
+            })?;
+            let ret = rows.next().transpose()?;
+            if rows.next().transpose()?.is_some() {
+                return Err(DatabaseError::TooManyRows {
+                    count: 2 + rows.count(),
+                });
+            }
+            let ret = ret.unwrap_or_else(|| {
+                SaveMeta::new_empty(
+                    rom.to_owned(),
+                    name.to_owned(),
+                    String::default(),
+                    emulator.map(|s| s.to_owned()),
+                )
             });
-        }
-        let ret = ret.unwrap_or_else(|| {
-            SaveMeta::new_empty(
-                rom.to_owned(),
-                name.to_owned(),
-                String::default(),
-                emulator.map(|s| s.to_owned()),
-            )
-        });
-        Ok(ret)
+            Ok(ret)
+        })
     }
 
     /// Pushes new metadata into the database after a sync.
@@ -110,23 +114,26 @@ ON CONFLICT DO UPDATE SET
     updated = ?6, 
     md5 = ?7,
     size = ?8"#;
-        let con = self.con.lock().unwrap();
-        let modified = con.execute(
-            QUERY,
-            (
-                &metadata.name,
-                &metadata.rom(),
-                &metadata.ext,
-                metadata.emulator.as_deref(),
-                metadata.created,
-                metadata.updated,
-                metadata.hash.as_bytes(),
-                metadata.size,
-            ),
-        )?;
-        if modified != 1 {
-            return Err(DatabaseError::TooManyRows { count: modified });
-        }
+        tokio::task::block_in_place(|| {
+            let con = self.con.lock().unwrap();
+            let modified = con.execute(
+                QUERY,
+                (
+                    &metadata.name,
+                    &metadata.rom(),
+                    &metadata.ext,
+                    metadata.emulator.as_deref(),
+                    metadata.created,
+                    metadata.updated,
+                    metadata.hash.as_bytes(),
+                    metadata.size,
+                ),
+            )?;
+            if modified != 1 {
+                return Err(DatabaseError::TooManyRows { count: modified });
+            }
+            Ok(())
+        })?;
         Ok(())
     }
 }
