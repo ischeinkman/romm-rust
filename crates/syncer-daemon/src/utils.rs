@@ -66,6 +66,7 @@ pub struct ConfigurableSleepSetter {
 }
 
 impl ConfigurableSleepSetter {
+    #[expect(unused)]
     pub fn current(&self) -> Duration {
         *self.snd.borrow()
     }

@@ -72,6 +72,7 @@ impl<I: AsRef<[V]>, V: Layout> ForEachDyn<I, V> {
     }
 
     #[must_use]
+    #[allow(unused)]
     pub const fn with_alignment(mut self, alignment: HorizontalAlignment) -> Self {
         self.alignment = alignment;
         self
