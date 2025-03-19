@@ -7,10 +7,11 @@ use buoyant::{
     },
 };
 use embedded_graphics::{
+    mono_font::MonoFont,
     pixelcolor::Rgb888,
     prelude::{RgbColor, WebColors},
 };
-use embedded_vintage_fonts::FONT_24X32;
+use embedded_vintage_fonts::{FONT_12X16, FONT_24X32};
 
 /// A [`checkbox`] with a label to the left.
 pub fn labeled_checkbox<'a, S: AsRef<str> + Clone + 'a>(
@@ -18,10 +19,11 @@ pub fn labeled_checkbox<'a, S: AsRef<str> + Clone + 'a>(
     is_selected: bool,
     is_on: bool,
 ) -> impl EmbeddedGraphicsView<Rgb888> + 'a {
-    const HEIGHT: u16 = FONT_24X32.character_size.height as _;
+    const FONT: MonoFont = FONT_24X32;
+    const HEIGHT: u16 = FONT.character_size.height as _;
     const PADDING: u16 = 4;
     HStack::new((
-        Text::new(label, &FONT_24X32).foreground_color(Rgb888::BLACK),
+        Text::new(label, &FONT).foreground_color(Rgb888::BLACK),
         Spacer::default(),
         checkbox(is_selected, is_on),
     ))
@@ -65,8 +67,9 @@ pub fn button(
     is_selected: bool,
     is_pressed: bool,
 ) -> impl EmbeddedGraphicsView<Rgb888> + Layout + Clone {
+    const FONT: MonoFont = FONT_12X16;
     const SELECTION_PADDING: u16 = 5;
-    const HEIGHT: u16 = SELECTION_PADDING + FONT_24X32.character_size.height as u16;
+    const HEIGHT: u16 = SELECTION_PADDING + FONT.character_size.height as u16;
     const PRESS_COLOR: Rgb888 = Rgb888::CSS_DARK_GREEN;
     const COLOR: Rgb888 = Rgb888::GREEN;
     const LABEL_COLOR: Rgb888 = Rgb888::BLACK;
@@ -79,7 +82,7 @@ pub fn button(
         .foreground_color(color)
         .padding(Edges::All, padding);
 
-    let label = Text::new(text, &FONT_24X32).foreground_color(LABEL_COLOR);
+    let label = Text::new(text, &FONT).foreground_color(LABEL_COLOR);
 
     ZStack::new((lower_rect, upper_rect, label))
         .flex_frame()
