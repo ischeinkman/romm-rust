@@ -4,11 +4,17 @@ set dotenv-load := true
 default:
     @just --list
 
-package-miyoo-zip: package-miyoo 
+[group('release')]
+release-miyoo-zip: release-clean package-miyoo 
     #!/bin/bash 
-    zip -j .build/sync-saver-miyoo.zip .build/sync-saver/*
+    if [ ! -d .build/release/ ]; then mkdir .build/release; fi
+    zip -j .build/release/sync-saver-miyoo.zip .build/sync-saver/*
 
-alias release-miyoo := package-miyoo-zip
+alias release-miyoo := release-miyoo-zip
+
+release-clean: 
+    #!/bin/bash 
+    rm -rf .build/release
 
 [group('package')]
 add-keys: package-miyoo 
