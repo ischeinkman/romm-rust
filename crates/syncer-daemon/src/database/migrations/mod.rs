@@ -200,6 +200,9 @@ mod tests {
         let version = database_version(&mut con).unwrap();
         let highest_version = migrations().last().unwrap().version;
         assert_eq!(version, highest_version);
+        let version = database_version(&mut con).unwrap();
+        let highest_version = migrations().last().unwrap().version;
+        assert_eq!(version, highest_version);
         revert_migrations(&mut con).unwrap();
         let version = database_version(&mut con).unwrap();
         assert_eq!(version, 0);
