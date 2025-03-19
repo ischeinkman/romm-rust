@@ -4,6 +4,13 @@ An **unofficial, third party, not-officially-supported, and above all IN
 PROGRESS** tool for syncing saves between the local device and a remote ROMM
 server.
 
+## Screenshots
+
+### Miyoo Mini
+
+![Homapage Screenshot](/assets/screenshots/homepage.bmp)
+
+![Save List Screenshot](/assets/screenshots/save-list.bmp)
 
 ## Usage
 
