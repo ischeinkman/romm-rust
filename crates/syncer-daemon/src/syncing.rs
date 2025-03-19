@@ -107,11 +107,8 @@ pub async fn perform_action(
         }
         Some(PushTarget::Remote) => {
             let mut mapped_romm_meta = romm_meta.clone();
-            mapped_romm_meta.meta.created = device_meta.meta.created;
-            mapped_romm_meta.meta.updated = device_meta.meta.updated;
-            mapped_romm_meta.meta.hash = device_meta.meta.hash;
-            mapped_romm_meta.meta.size = device_meta.meta.size;
-            mapped_romm_meta.meta.emulator = device_meta.meta.emulator.clone();
+            mapped_romm_meta.meta = device_meta.meta.clone();
+            trace!("Pushing new meta: {mapped_romm_meta:?}");
             cl.push_save(&device_meta.path, &mapped_romm_meta, romm_format)
                 .await?;
             &device_meta.meta

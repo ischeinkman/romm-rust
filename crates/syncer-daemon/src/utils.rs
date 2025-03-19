@@ -1,5 +1,6 @@
 use std::io;
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
 use chrono::{DateTime, Utc};
@@ -10,6 +11,17 @@ use thiserror::Error;
 use tokio::fs::{self, File};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::watch;
+use tracing::trace;
+
+static INCREMENTING_ID: AtomicUsize = AtomicUsize::new(0xa0_00);
+
+/// Returns a new ID to use for debugging purposes.
+///
+/// Guranteed to not repeat across multiple calls, even in async/multi-threaded
+/// environments.
+pub fn new_id() -> usize {
+    INCREMENTING_ID.fetch_add(1, Ordering::Relaxed)
+}
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EitherError<A, B> {
@@ -57,11 +69,13 @@ pub fn timestamp_now() -> DateTime<Utc> {
 /// `X` being user-configurable. Each update to `X` can then apply immediately,
 /// without needing to wait for the previous sleep call to finish.
 pub struct ConfigurableSleep {
+    id: usize,
     configuration_cb: watch::Receiver<Duration>,
 }
 
 #[derive(Clone)]
 pub struct ConfigurableSleepSetter {
+    id: usize,
     snd: watch::Sender<Duration>,
 }
 
@@ -71,15 +85,20 @@ impl ConfigurableSleepSetter {
         *self.snd.borrow()
     }
     pub fn set(&self, duration: Duration) {
+        trace!("Setting delay for sleep {}", self.id);
         self.snd.send_replace(duration);
     }
 }
 
 impl ConfigurableSleep {
     pub fn new(duration: Duration) -> (ConfigurableSleep, ConfigurableSleepSetter) {
+        let id = new_id();
         let (snd, configuration_cb) = watch::channel(duration);
-        let sleep = ConfigurableSleep { configuration_cb };
-        let setter = ConfigurableSleepSetter { snd };
+        let sleep = ConfigurableSleep {
+            id,
+            configuration_cb,
+        };
+        let setter = ConfigurableSleepSetter { id, snd };
         (sleep, setter)
     }
 
@@ -99,10 +118,12 @@ impl ConfigurableSleep {
     /// immediately.
     pub async fn sleep(&mut self) {
         let start = Instant::now();
+        let dt = *self.configuration_cb.borrow_and_update();
+        trace!("Starting sleep on ID {} ({} s)", self.id, dt.as_secs_f64());
         loop {
             let dt = *self.configuration_cb.borrow_and_update();
             if dt >= start.elapsed() {
-                return;
+                break;
             }
             let change_fut = self.configuration_cb.changed();
             let sleep_fut = tokio::time::sleep(dt);
@@ -110,7 +131,7 @@ impl ConfigurableSleep {
             futures::pin_mut!(sleep_fut);
             match futures::future::select(sleep_fut, change_fut).await {
                 Either::Left(((), _)) => {
-                    return;
+                    break;
                 }
                 Either::Right((Ok(()), _)) => {
                     continue;
@@ -121,10 +142,11 @@ impl ConfigurableSleep {
                 // the sleep future without worry.
                 Either::Right((Err(_), rest)) => {
                     rest.await;
-                    return;
+                    break;
                 }
             }
         }
+        trace!("Finished sleep on ID {}", self.id);
     }
 }
 
@@ -138,30 +160,47 @@ impl ConfigurableSleep {
 /// since even if multiple changes occur before we can do the associated
 /// syncing/flushing we only ever care about the final value.
 #[derive(Clone)]
-pub struct EventTrigger(watch::Sender<bool>);
+pub struct EventTrigger {
+    id: usize,
+    inner: watch::Sender<bool>,
+}
 
 impl EventTrigger {
     pub fn new() -> (EventTrigger, EventTriggerRecv) {
-        let (snd, _) = watch::channel(false);
-        (EventTrigger(snd.clone()), EventTriggerRecv(snd))
+        let id = new_id();
+        let (inner, _) = watch::channel(false);
+        (
+            EventTrigger {
+                id,
+                inner: inner.clone(),
+            },
+            EventTriggerRecv { id, inner },
+        )
     }
 
     pub fn trigger(&self) {
-        self.0.send_replace(true);
+        trace!("Triggering: {}", self.id);
+        self.inner.send_replace(true);
     }
 }
 
-pub struct EventTriggerRecv(watch::Sender<bool>);
+pub struct EventTriggerRecv {
+    id: usize,
+    inner: watch::Sender<bool>,
+}
 impl EventTriggerRecv {
     pub async fn wait_and_reset(&mut self) {
-        if self.0.subscribe().wait_for(|b| *b).await.is_ok() {
-            self.0.send_replace(false);
+        trace!("Waiting on trigger: {}", self.id);
+        if self.inner.subscribe().wait_for(|b| *b).await.is_ok() {
+            trace!("Triggered: {}", self.id);
+            self.inner.send_replace(false);
         } else {
             // If all senders have closed the event will never trigger
             // again.
             //
             // This should be impossible though since we ourselves hold a
             // sender on this channel.
+            trace!("Trigger dropped: {}", self.id);
             futures::future::pending().await
         }
     }

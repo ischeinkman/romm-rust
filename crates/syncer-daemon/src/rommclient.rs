@@ -16,6 +16,7 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::{collections::HashMap, path::Path, sync::RwLock};
 use thiserror::Error;
+use tracing::warn;
 use tracing::{debug, error, info, trace};
 use url::Url;
 
@@ -101,6 +102,10 @@ impl RommClient {
             meta.rom_id,
             save.display()
         );
+        if meta.meta.timestamp().timestamp() <= 60 * 60 * 24 * 30 {
+            warn!("Found too low timestamp before pushing save: {meta:?}");
+            return Ok(());
+        }
         let mut ep = format!("/api/saves?rom_id={}", meta.rom_id);
         if let Some(emu) = meta.meta.emulator.as_deref() {
             ep.push_str("&emulator=");

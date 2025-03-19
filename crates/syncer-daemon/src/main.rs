@@ -226,15 +226,14 @@ fn build_sync_loop_thread(
 }
 fn build_sync_actor_thread() -> (EventTrigger, JoinHandle<()>) {
     let (snd, mut trigger) = EventTrigger::new();
-    let task = async move {
+    let thread = tokio::spawn(async move {
         loop {
             trigger.wait_and_reset().await;
             if let Err(e) = do_sync().await {
                 error!("Error during sync: {e:?}");
             }
         }
-    };
-    let thread = tokio::spawn(task);
+    });
     (snd, thread)
 }
 
@@ -245,9 +244,9 @@ async fn load_config() -> Result<Config, anyhow::Error> {
 }
 
 async fn do_sync() -> Result<(), anyhow::Error> {
+    info!("Performing sync.");
     let cfg = load_config().await?;
     let db = SaveMetaDatabase::open(cfg.system.database.as_deref().unwrap())?;
-    info!("Performing sync.");
     debug!("Performing sync with config: {cfg:?}");
     let cl = RommClient::new(
         cfg.romm.url.clone().unwrap(),
@@ -255,6 +254,7 @@ async fn do_sync() -> Result<(), anyhow::Error> {
     );
 
     run_sync(&cfg, &cl, &db).await?;
+    info!("Finished sync.");
     Ok(())
 }
 
