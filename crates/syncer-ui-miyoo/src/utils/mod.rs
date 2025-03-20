@@ -1,13 +1,14 @@
-mod views;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
 
 use tokio::{
-    sync::{RwLock, RwLockReadGuard},
+    sync::{RwLock, RwLockReadGuard, Semaphore},
     task::JoinHandle,
 };
+
+mod views;
 pub use views::*;
 
 /// A task executing in the background that will be stopped when the
@@ -69,8 +70,15 @@ impl Drop for BackgroundTask {
 /// * Slower and less ergonomic writes
 /// * Needing to keep multiple copies of the value around
 pub struct QuickReadSlot<T: Clone> {
+    /// The first RwLock, which will remain write-locked during modifications. 
     lock1: RwLock<T>,
+    /// The second RwLock, which will remain free during modifications until
+    /// after `lock1` has been updated. 
     lock2: RwLock<T>,
+    /// A semaphore to block writes before they try acquiring `lock1`, making
+    /// sure they don't enter the lock queue until both `lock1` and `lock2`
+    /// don't have any outstanding write locks in their queues.
+    writes_permit: Semaphore,
 }
 
 impl<T: Clone> QuickReadSlot<T> {
@@ -78,6 +86,7 @@ impl<T: Clone> QuickReadSlot<T> {
         Self {
             lock1: RwLock::new(inner.clone()),
             lock2: RwLock::new(inner),
+            writes_permit: Semaphore::new(1),
         }
     }
 
@@ -86,13 +95,26 @@ impl<T: Clone> QuickReadSlot<T> {
     where
         F: for<'a> AsyncFnOnce(&'a mut T) -> R,
     {
+        let permit = self.writes_permit.acquire().await.unwrap_or_else(|_| {
+            // Should never happen since we never close the semaphore and always
+            // have a handle to it through `self`
+            unreachable!()
+        });
         let mut l1 = self.lock1.write().await;
-        let ret = f(&mut l1).await;
+        let res = f(&mut l1).await;
+
+        // Since writers can't enter the lock queue until we release our permit,
+        // downgrading `l1` will allow readers to read from it while we update
+        // l2.
+        //
+        // After this all future calls to `read()` will return the new value.
         let l1 = l1.downgrade();
-        let value = l1.clone();
-        *self.lock2.write().await = value;
+        let mut l2 = self.lock2.write().await;
+        *l2 = l1.clone();
+        drop(l2);
         drop(l1);
-        ret
+        drop(permit);
+        res
     }
 
     /// Acquires a read lock of the inner value.
@@ -101,9 +123,7 @@ impl<T: Clone> QuickReadSlot<T> {
     pub fn read(&self) -> RwLockReadGuard<'_, T> {
         // We know that at least 1 of these locks will be free of `.write()`
         // calls at any given moment, so this should theoretically never loop
-        // more than once or twice unless we have a very specific pathologic
-        // case where an infinite number of writers is scheduled *PERFECTLY* to
-        // starve our reads.
+        // more than once or twice.
         loop {
             if let Ok(ret) = self.lock1.try_read() {
                 break ret;
