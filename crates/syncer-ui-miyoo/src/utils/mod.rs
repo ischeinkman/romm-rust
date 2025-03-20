@@ -70,10 +70,10 @@ impl Drop for BackgroundTask {
 /// * Slower and less ergonomic writes
 /// * Needing to keep multiple copies of the value around
 pub struct QuickReadSlot<T: Clone> {
-    /// The first RwLock, which will remain write-locked during modifications. 
+    /// The first RwLock, which will remain write-locked during modifications.
     lock1: RwLock<T>,
     /// The second RwLock, which will remain free during modifications until
-    /// after `lock1` has been updated. 
+    /// after `lock1` has been updated.
     lock2: RwLock<T>,
     /// A semaphore to block writes before they try acquiring `lock1`, making
     /// sure they don't enter the lock queue until both `lock1` and `lock2`
