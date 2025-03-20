@@ -8,6 +8,7 @@ use embedded_graphics::{
 };
 use evdev::{Device, EventStream, EventSummary, KeyCode};
 use linuxfb::{Framebuffer, PixelLayout};
+use tracing::debug;
 
 /// Wrapper around the Miyoo Mini's framebuffer.
 ///
@@ -52,8 +53,11 @@ impl MiyooFramebuffer {
     /// Flushes the current buffer to the screen.
     ///
     /// Must be called every frame to update the screen.
-    pub fn flush(&mut self) -> Result<(), linuxfb::Error> {
-        let mut fb = self.fb.map()?;
+    pub fn flush(&mut self) -> Result<(), anyhow::Error> {
+        let mut fb = self
+            .fb
+            .map()
+            .map_err(|e| anyhow::anyhow!("Error getting framebuffer mmap: {e:?}"))?;
         fb.copy_from_slice(&self.buffer);
         Ok(())
     }
@@ -194,6 +198,7 @@ impl InputReader {
         let inner = Device::open("/dev/input/event0")?.into_event_stream()?;
         Ok(Self { inner })
     }
+    #[tracing::instrument(skip(self))]
     pub async fn next_event(&mut self) -> io::Result<(MiyooButton, MiyooButtonEvent)> {
         loop {
             let raw = self.inner.next_event().await?;
@@ -202,8 +207,8 @@ impl InputReader {
             };
             let button: MiyooButton = match code.try_into() {
                 Ok(btn) => btn,
-                Err(_e) => {
-                    //TODO: Log
+                Err(e) => {
+                    debug!("Unknown button kind: {e:?}");
                     continue;
                 }
             };
@@ -214,8 +219,8 @@ impl InputReader {
                     // Key repeat; not sure what counts, but we'll treat it as a press for now.
                     MiyooButtonEvent::Pressed
                 }
-                _other => {
-                    //TODO: log
+                other => {
+                    debug!("Unknown button event kind: {other}");
                     continue;
                 }
             };

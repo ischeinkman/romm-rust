@@ -1882,6 +1882,8 @@ dependencies = [
  "syncer-model",
  "thiserror",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

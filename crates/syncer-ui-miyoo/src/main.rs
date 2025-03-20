@@ -1,4 +1,4 @@
-use std::{io, ops::Deref, sync::Arc};
+use std::{env, io, ops::Deref, sync::Arc};
 
 use anyhow::Context;
 use buoyant::{
@@ -22,6 +22,7 @@ use embedded_graphics::{
 use embedded_vintage_fonts::FONT_24X32;
 use socketproto::DaemonSocket;
 use tokio::sync::RwLock;
+use tracing::{debug, level_filters::LevelFilter};
 
 use syncer_model::{
     commands::{DaemonCommand, DaemonCommandBody},
@@ -38,10 +39,12 @@ use miyoo_io::{InputReader, MiyooButton, MiyooButtonEvent, MiyooFramebuffer};
 mod savelist;
 mod socketproto;
 use savelist::SavelistState;
+use tracing_subscriber::{EnvFilter, FmtSubscriber, util::SubscriberInitExt as _};
 mod utils;
 
 fn main() {
     verify_platform();
+    init_logger();
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -56,6 +59,28 @@ fn verify_platform() {
     }
 }
 
+fn init_logger() {
+    let trace_env = EnvFilter::builder()
+        .with_default_directive(LevelFilter::INFO.into())
+        .with_env_var("ROM_SYNC_LOG")
+        .from_env()
+        .unwrap();
+    let subscriber = FmtSubscriber::builder()
+        .with_env_filter(trace_env)
+        .with_file(true)
+        .with_line_number(true);
+    let no_color = env::var_os("NO_COLOR").is_some_and(|s| !s.eq_ignore_ascii_case("0"))
+        || env::var_os("ROM_SYNC_UI_NO_COLOR").is_some_and(|s| !s.eq_ignore_ascii_case("0"));
+    let json_log =
+        env::var_os("ROM_SYNC_UI_LOG_JSON").is_some_and(|s| !s.eq_ignore_ascii_case("0"));
+    let subscriber = subscriber.with_ansi(!no_color);
+    if json_log {
+        subscriber.json().finish().init();
+    } else {
+        subscriber.finish().init();
+    }
+}
+
 async fn async_main() {
     let mut fb = MiyooFramebuffer::find_any().unwrap();
     fb.clear(Rgb888::BLACK).unwrap();
@@ -65,42 +90,9 @@ async fn async_main() {
     let mut view = FullViewState::new(cfg.clone()).await.unwrap();
 
     loop {
-        let tree = view.build_view();
-        let display_rect = fb.bounding_box();
-        let render_tree = tree.render_tree(
-            &tree.layout(
-                &Size::from(display_rect.size).into(),
-                &DefaultEnvironment::default(),
-            ),
-            Point::zero(),
-            &DefaultEnvironment::default(),
-        );
-        fb.clear(Rgb888::CSS_DARK_BLUE).unwrap();
-        render_tree.render(&mut fb, &Rgb888::CSS_DARK_BLUE, Point::zero());
-        fb.flush().unwrap();
-        drop(tree);
-        drop(render_tree);
-
+        view.render_view(&mut fb).unwrap();
         let (btn, evt) = input.next_event().await.unwrap();
         match (btn, evt) {
-            (MiyooButton::Up, MiyooButtonEvent::Pressed) => {
-                view.up().await.unwrap();
-            }
-            (MiyooButton::Down, MiyooButtonEvent::Pressed) => {
-                view.down().await.unwrap();
-            }
-            (MiyooButton::Left, MiyooButtonEvent::Pressed) => {
-                view.left().await.unwrap();
-            }
-            (MiyooButton::Right, MiyooButtonEvent::Pressed) => {
-                view.right().await.unwrap();
-            }
-            (MiyooButton::A, MiyooButtonEvent::Pressed) => {
-                view.press().await.unwrap();
-            }
-            (MiyooButton::A, MiyooButtonEvent::Released) => {
-                view.release().await.unwrap();
-            }
             (MiyooButton::Menu, MiyooButtonEvent::Pressed) => {
                 break;
             }
@@ -132,7 +124,9 @@ async fn async_main() {
                     }
                 };
             }
-            _ => {}
+            (btn, evt) => {
+                view.handle_event(btn, evt).await.unwrap();
+            }
         }
     }
 }
@@ -156,7 +150,53 @@ pub trait ViewState {
     fn release(&mut self) -> impl Future<Output = Result<(), anyhow::Error>> + '_ {
         futures::future::ready(Ok(()))
     }
+    fn handle_event(
+        &mut self,
+        btn: MiyooButton,
+        evt: MiyooButtonEvent,
+    ) -> impl Future<Output = Result<(), anyhow::Error>> + '_ {
+        async move {
+            match (btn, evt) {
+                (MiyooButton::Up, MiyooButtonEvent::Pressed) => {
+                    self.up().await?;
+                }
+                (MiyooButton::Down, MiyooButtonEvent::Pressed) => {
+                    self.down().await?;
+                }
+                (MiyooButton::Left, MiyooButtonEvent::Pressed) => {
+                    self.left().await?;
+                }
+                (MiyooButton::Right, MiyooButtonEvent::Pressed) => {
+                    self.right().await?;
+                }
+                (MiyooButton::A, MiyooButtonEvent::Pressed) => {
+                    self.press().await?;
+                }
+                (MiyooButton::A, MiyooButtonEvent::Released) => {
+                    self.release().await?;
+                }
+                _ => {}
+            }
+            Ok(())
+        }
+    }
     fn build_view(&self) -> impl EmbeddedGraphicsView<Rgb888> + Layout + '_;
+    fn render_view(&self, fb: &mut MiyooFramebuffer) -> Result<(), anyhow::Error> {
+        let tree = self.build_view();
+        let display_rect = fb.bounding_box();
+        let render_tree = tree.render_tree(
+            &tree.layout(
+                &Size::from(display_rect.size).into(),
+                &DefaultEnvironment::default(),
+            ),
+            Point::zero(),
+            &DefaultEnvironment::default(),
+        );
+        fb.clear(Rgb888::CSS_DARK_BLUE)?;
+        render_tree.render(fb, &Rgb888::CSS_DARK_BLUE, Point::zero());
+        fb.flush()?;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -195,7 +235,7 @@ impl ApplicationState {
         match socket_res {
             Ok(()) => Ok(res),
             Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                //TODO: Log
+                debug!("Attempted sync while daemon isn't running.");
                 Ok(res)
             }
             Err(e) => Err(e.into()),

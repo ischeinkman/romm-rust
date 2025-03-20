@@ -15,6 +15,7 @@ use syncer_model::{
     commands::{DaemonCommand, DaemonCommandBody},
     config::{Config, ParseableDuration},
 };
+use tracing::{info, warn};
 
 use crate::{ApplicationState, ViewState, utils::BackgroundTask};
 use crate::{
@@ -119,8 +120,8 @@ impl HomepageState {
         let es = Arc::clone(&external_state);
         let _external_state_poller = BackgroundTask::new(async move |flag| {
             while !flag.should_stop() {
-                if let Err(_e) = es.modify_with(async |state| state.reload().await).await {
-                    //TODO: Log
+                if let Err(e) = es.modify_with(async |state| state.reload().await).await {
+                    warn!("Error updating homepage state: {e:?}");
                 }
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
@@ -211,7 +212,7 @@ impl ViewState for HomepageState {
                         self.reload().await?;
                     }
                     Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                        //TODO: Log
+                        info!("User tried to resync the daemon when it isn't running.");
                     }
                     Err(e) => {
                         return Err(e.into());

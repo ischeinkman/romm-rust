@@ -9,6 +9,8 @@ futures = { workspace = true }
 interprocess = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 syncer-model = { path = "../syncer-model" }
 

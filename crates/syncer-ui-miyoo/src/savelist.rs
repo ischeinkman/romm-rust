@@ -14,6 +14,7 @@ use buoyant::{layout::Layout, render::EmbeddedGraphicsView};
 use embedded_graphics::pixelcolor::Rgb888;
 use futures::{StreamExt, TryFutureExt, TryStreamExt, future};
 use syncer_model::config::Config;
+use tracing::error;
 
 use crate::components::labeled_checkbox;
 use crate::utils::ForEachDyn;
@@ -46,8 +47,8 @@ async fn saves_from_cfg(cfg: &Config) -> Vec<(String, bool)> {
         .possible_saves()
         .filter_map(|res| match res {
             Ok((path, _, _)) => futures::future::ready(Some(path)),
-            Err(_e) => {
-                //TODO: Log this
+            Err(e) => {
+                error!("Error getting save: {e:?}");
                 futures::future::ready(None)
             }
         })
