@@ -23,7 +23,7 @@ use crate::{ApplicationState, ViewState};
 pub struct SavelistState {
     saves: Vec<(String, bool)>,
     selected: usize,
-    cfg: ApplicationState,
+    pub cfg: ApplicationState,
 }
 
 impl SavelistState {

@@ -1,4 +1,8 @@
-use std::{env, io, ops::Deref, sync::Arc};
+use std::{
+    env, io,
+    ops::{ControlFlow, Deref},
+    sync::Arc,
+};
 
 use anyhow::Context;
 use buoyant::{
@@ -20,9 +24,10 @@ use embedded_graphics::{
     prelude::{RgbColor, WebColors},
 };
 use embedded_vintage_fonts::FONT_24X32;
+use futures::{FutureExt, TryFutureExt, future::Either, pin_mut};
 use socketproto::DaemonSocket;
 use tokio::sync::RwLock;
-use tracing::{debug, level_filters::LevelFilter};
+use tracing::{debug, error, level_filters::LevelFilter};
 
 use syncer_model::{
     commands::{DaemonCommand, DaemonCommandBody},
@@ -88,99 +93,143 @@ async fn async_main() {
     let mut input = InputReader::new().unwrap();
     let cfg = ApplicationState::new().await.unwrap();
     let mut view = FullViewState::new(cfg.clone()).await.unwrap();
+    view.render_view(&mut fb).unwrap();
 
     loop {
-        view.render_view(&mut fb).unwrap();
-        let (btn, evt) = input.next_event().await.unwrap();
-        match (btn, evt) {
-            (MiyooButton::Menu, MiyooButtonEvent::Pressed) => {
-                break;
+        let mapped_evt = {
+            /*
+            We need to separate out the code that polls for button events and view triggers from
+            the code that handles them because right now the `.await` call on the combined future
+            of these events won't actually drop the future until the end of the scope its in. To
+            get around this we only actually generate the futures within a sub-scope and then
+            translate their results into a single `Result<Option<Button, ButtonEvent>>` before the
+            scope completes. This drops the future at the end of the sub-scope, allowing us to then
+            use & update `view` as needed.
+            */
+            let input_fut = input.next_event().map_err(anyhow::Error::from).fuse();
+            pin_mut!(input_fut);
+            let trigger_fut = view.trigger_redraw().fuse();
+            pin_mut!(trigger_fut);
+            let res = futures::future::select(input_fut, trigger_fut).await;
+
+            match res {
+                Either::Left((Err(e), _)) | Either::Right((Err(e), _)) => Err(e),
+                Either::Left((Ok((btn, evt)), _)) => Ok(Some((btn, evt))),
+                Either::Right((Ok(()), _)) => Ok(None),
             }
-            (MiyooButton::B, MiyooButtonEvent::Pressed) => {
-                view = match view {
-                    FullViewState::Homepage(_) => {
-                        return;
-                    }
-                    _ => FullViewState::Homepage(HomepageState::new(cfg.clone()).await.unwrap()),
-                };
-            }
-            (MiyooButton::R | MiyooButton::Rz, MiyooButtonEvent::Pressed) => {
-                view = match view {
-                    FullViewState::Homepage(_) => {
-                        FullViewState::SavesList(SavelistState::new(cfg.clone()).await)
-                    }
-                    FullViewState::SavesList(_) => {
-                        FullViewState::Homepage(HomepageState::new(cfg.clone()).await.unwrap())
-                    }
-                };
-            }
-            (MiyooButton::L | MiyooButton::Lz, MiyooButtonEvent::Pressed) => {
-                view = match view {
-                    FullViewState::Homepage(_) => {
-                        FullViewState::SavesList(SavelistState::new(cfg.clone()).await)
-                    }
-                    FullViewState::SavesList(_) => {
-                        FullViewState::Homepage(HomepageState::new(cfg.clone()).await.unwrap())
-                    }
-                };
-            }
-            (btn, evt) => {
+        };
+        match mapped_evt {
+            Ok(Some((btn, evt))) => {
                 view.handle_event(btn, evt).await.unwrap();
+                view.render_view(&mut fb).unwrap();
+            }
+            Ok(None) => {
+                view.render_view(&mut fb).unwrap();
+            }
+            Err(e) => {
+                error!("Error waiting for redraw event: {e:?}");
             }
         }
     }
 }
 
 pub trait ViewState {
+    /// Handle the up arrow.
     fn up(&mut self) -> impl Future<Output = Result<(), anyhow::Error>> + '_ {
         futures::future::ready(Ok(()))
     }
+    /// Handle the down arrow.
     fn down(&mut self) -> impl Future<Output = Result<(), anyhow::Error>> + '_ {
         futures::future::ready(Ok(()))
     }
+    /// Handle the left arrow.
     fn left(&mut self) -> impl Future<Output = Result<(), anyhow::Error>> + '_ {
         futures::future::ready(Ok(()))
     }
+    /// Handle the right arrow.
     fn right(&mut self) -> impl Future<Output = Result<(), anyhow::Error>> + '_ {
         futures::future::ready(Ok(()))
     }
+    /// Handle the `L` and `Lz` buttons.
+    fn l(&mut self) -> impl Future<Output = Result<(), anyhow::Error>> + '_ {
+        futures::future::ready(Ok(()))
+    }
+    /// Handle the `R` and `Rz` buttons.
+    fn r(&mut self) -> impl Future<Output = Result<(), anyhow::Error>> + '_ {
+        futures::future::ready(Ok(()))
+    }
+    /// Handle an `A` button press.
+    ///
+    /// Whether the current item triggers on press vs release depends on
+    /// the screen and selection.
     fn press(&mut self) -> impl Future<Output = Result<(), anyhow::Error>> + '_ {
         futures::future::ready(Ok(()))
     }
+    /// Handle an `A` button release.
+    ///
+    /// Whether the current item triggers on press vs release depends on
+    /// the screen and selection.
     fn release(&mut self) -> impl Future<Output = Result<(), anyhow::Error>> + '_ {
         futures::future::ready(Ok(()))
     }
+    /// Handle an `B` button press
+    fn back(&mut self) -> impl Future<Output = Result<ControlFlow<(), ()>, anyhow::Error>> + '_ {
+        futures::future::ready(Ok(ControlFlow::Continue(())))
+    }
+    /// Handles a single button event.
+    ///
+    /// The default implementation just forwards to the relevant trait methods.
     fn handle_event(
         &mut self,
         btn: MiyooButton,
         evt: MiyooButtonEvent,
-    ) -> impl Future<Output = Result<(), anyhow::Error>> + '_ {
+    ) -> impl Future<Output = Result<ControlFlow<(), ()>, anyhow::Error>> + '_ {
         async move {
-            match (btn, evt) {
+            let res = match (btn, evt) {
                 (MiyooButton::Up, MiyooButtonEvent::Pressed) => {
                     self.up().await?;
+                    ControlFlow::Continue(())
                 }
                 (MiyooButton::Down, MiyooButtonEvent::Pressed) => {
                     self.down().await?;
+                    ControlFlow::Continue(())
                 }
                 (MiyooButton::Left, MiyooButtonEvent::Pressed) => {
                     self.left().await?;
+                    ControlFlow::Continue(())
                 }
                 (MiyooButton::Right, MiyooButtonEvent::Pressed) => {
                     self.right().await?;
+                    ControlFlow::Continue(())
                 }
                 (MiyooButton::A, MiyooButtonEvent::Pressed) => {
                     self.press().await?;
+                    ControlFlow::Continue(())
                 }
                 (MiyooButton::A, MiyooButtonEvent::Released) => {
                     self.release().await?;
+                    ControlFlow::Continue(())
                 }
-                _ => {}
-            }
-            Ok(())
+                (MiyooButton::R | MiyooButton::Rz, MiyooButtonEvent::Pressed) => {
+                    self.r().await?;
+                    ControlFlow::Continue(())
+                }
+                (MiyooButton::L | MiyooButton::Lz, MiyooButtonEvent::Pressed) => {
+                    self.l().await?;
+                    ControlFlow::Continue(())
+                }
+                (MiyooButton::Menu, MiyooButtonEvent::Pressed) => ControlFlow::Break(()),
+                (MiyooButton::B, MiyooButtonEvent::Pressed) => self.back().await?,
+                _ => ControlFlow::Continue(()),
+            };
+            Ok(res)
         }
     }
+
+    /// Constructs the UI view for this [`ViewState`].
     fn build_view(&self) -> impl EmbeddedGraphicsView<Rgb888> + Layout + '_;
+
+    /// Renders the output of [`ViewState::build_view`] to the given framebuffer.
     fn render_view(&self, fb: &mut MiyooFramebuffer) -> Result<(), anyhow::Error> {
         let tree = self.build_view();
         let display_rect = fb.bounding_box();
@@ -196,6 +245,11 @@ pub trait ViewState {
         render_tree.render(fb, &Rgb888::CSS_DARK_BLUE, Point::zero());
         fb.flush()?;
         Ok(())
+    }
+    /// If this future completes then the output of [`ViewState::build_view`]
+    /// has changed and we need a new call to [`ViewState::render_view`].
+    fn trigger_redraw(&mut self) -> impl Future<Output = Result<(), anyhow::Error>> + '_ {
+        futures::future::pending()
     }
 }
 
@@ -297,6 +351,37 @@ impl ViewState for FullViewState {
             SavesList(view) => view.release().await,
         }
     }
+    async fn l(&mut self) -> Result<(), anyhow::Error> {
+        *self = match self {
+            FullViewState::Homepage(state) => {
+                FullViewState::SavesList(SavelistState::new(state.cfg.clone()).await)
+            }
+            FullViewState::SavesList(state) => {
+                FullViewState::Homepage(HomepageState::new(state.cfg.clone()).await?)
+            }
+        };
+        Ok(())
+    }
+    async fn r(&mut self) -> Result<(), anyhow::Error> {
+        *self = match self {
+            FullViewState::Homepage(state) => {
+                FullViewState::SavesList(SavelistState::new(state.cfg.clone()).await)
+            }
+            FullViewState::SavesList(state) => {
+                FullViewState::Homepage(HomepageState::new(state.cfg.clone()).await?)
+            }
+        };
+        Ok(())
+    }
+    async fn back(&mut self) -> Result<ControlFlow<(), ()>, anyhow::Error> {
+        match self {
+            FullViewState::Homepage(_) => Ok(ControlFlow::Break(())),
+            FullViewState::SavesList(state) => {
+                *self = FullViewState::Homepage(HomepageState::new(state.cfg.clone()).await?);
+                Ok(ControlFlow::Continue(()))
+            }
+        }
+    }
     fn build_view(&self) -> impl EmbeddedGraphicsView<Rgb888> + Layout + '_ {
         let (inner, tab_selection) = match self {
             FullViewState::SavesList(view) => {
@@ -315,6 +400,13 @@ impl ViewState for FullViewState {
         .flex_frame()
         .with_infinite_max_width();
         VStack::new((tabs, inner)).flex_frame()
+    }
+    async fn trigger_redraw(&mut self) -> Result<(), anyhow::Error> {
+        use FullViewState::*;
+        match self {
+            Homepage(view) => view.trigger_redraw().await,
+            SavesList(view) => view.trigger_redraw().await,
+        }
     }
 }
 

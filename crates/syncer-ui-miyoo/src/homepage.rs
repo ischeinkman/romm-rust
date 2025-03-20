@@ -15,6 +15,7 @@ use syncer_model::{
     commands::{DaemonCommand, DaemonCommandBody},
     config::{Config, ParseableDuration},
 };
+use tokio::sync::broadcast::{self, error::TryRecvError};
 use tracing::{info, warn};
 
 use crate::{ApplicationState, ViewState, utils::BackgroundTask};
@@ -27,6 +28,7 @@ use crate::{
     utils::QuickReadSlot,
 };
 
+const REFRESH_STATE_INTERVAL: Duration = Duration::from_millis(200);
 const POLL_TIME_OPTIONS: &[Duration] = &[
     Duration::from_secs(60),
     Duration::from_secs(60 * 5),
@@ -54,9 +56,10 @@ const fn cur_poll_idx(duration: Duration) -> usize {
 pub struct HomepageState {
     pressed: bool,
     selection: HomePageSelection,
-    app_state: ApplicationState,
+    pub cfg: ApplicationState,
     external_state: Arc<QuickReadSlot<ExternalState>>,
     _external_state_poller: BackgroundTask,
+    redraw_trigger: broadcast::Sender<()>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
@@ -117,29 +120,42 @@ impl HomePageSelection {
 impl HomepageState {
     pub async fn new(cfg: ApplicationState) -> Result<Self, anyhow::Error> {
         let external_state = Arc::new(QuickReadSlot::new(ExternalState::new(cfg.clone()).await?));
+        let (redraw_trigger, _) = broadcast::channel(5);
+        let trigger2 = redraw_trigger.clone();
         let es = Arc::clone(&external_state);
         let _external_state_poller = BackgroundTask::new(async move |flag| {
             while !flag.should_stop() {
-                if let Err(e) = es.modify_with(async |state| state.reload().await).await {
-                    warn!("Error updating homepage state: {e:?}");
+                match es.modify_with(async |state| state.reload().await).await {
+                    Ok(true) => {
+                        trigger2.send(()).ok();
+                    }
+                    Ok(false) => {}
+                    Err(e) => {
+                        warn!("Error updating homepage state: {e:?}");
+                    }
                 }
-                tokio::time::sleep(Duration::from_millis(10)).await;
+                tokio::time::sleep(REFRESH_STATE_INTERVAL).await;
             }
         });
         let mut retvl = Self {
-            app_state: cfg.clone(),
+            cfg: cfg.clone(),
             pressed: false,
             selection: HomePageSelection::default(),
             external_state,
             _external_state_poller,
+            redraw_trigger,
         };
         retvl.reload().await?;
         Ok(retvl)
     }
     async fn reload(&mut self) -> Result<(), anyhow::Error> {
-        self.external_state
+        let needs_redraw = self
+            .external_state
             .modify_with(async |state| state.reload().await)
             .await?;
+        if needs_redraw {
+            self.redraw_trigger.send(()).ok();
+        }
         Ok(())
     }
 }
@@ -155,9 +171,9 @@ impl ViewState for HomepageState {
     }
     async fn left(&mut self) -> Result<(), anyhow::Error> {
         if self.selection == HomePageSelection::PollTimeSelection {
-            let cur_poll_idx = cur_poll_idx(*self.app_state.config().await.system.poll_interval);
+            let cur_poll_idx = cur_poll_idx(*self.cfg.config().await.system.poll_interval);
             let prev_poll_idx = cur_poll_idx.saturating_sub(1);
-            self.app_state
+            self.cfg
                 .modify_and_save_cfg(move |cfg: &mut Config| {
                     cfg.system.poll_interval = POLL_TIME_OPTIONS[prev_poll_idx].into();
                     future::ready(())
@@ -171,9 +187,9 @@ impl ViewState for HomepageState {
     }
     async fn right(&mut self) -> Result<(), anyhow::Error> {
         if self.selection == HomePageSelection::PollTimeSelection {
-            let cur_poll_idx = cur_poll_idx(*self.app_state.config().await.system.poll_interval);
+            let cur_poll_idx = cur_poll_idx(*self.cfg.config().await.system.poll_interval);
             let next_poll_idx = (POLL_TIME_OPTIONS.len() - 1).min(cur_poll_idx + 1);
-            self.app_state
+            self.cfg
                 .modify_and_save_cfg(move |cfg: &mut Config| {
                     cfg.system.poll_interval = POLL_TIME_OPTIONS[next_poll_idx].into();
                     future::ready(())
@@ -203,7 +219,7 @@ impl ViewState for HomepageState {
             }
             ForceSyncButton => {
                 let res = self
-                    .app_state
+                    .cfg
                     .socket
                     .send(&DaemonCommand::new(DaemonCommandBody::DoSync))
                     .await;
@@ -236,7 +252,7 @@ impl ViewState for HomepageState {
                 self.reload().await?;
             }
             FsnotifyBox => {
-                self.app_state
+                self.cfg
                     .modify_and_save_cfg(|cfg: &mut Config| {
                         cfg.system.sync_on_file_change = !external_state.fs_notify_enabled;
                         future::ready(())
@@ -259,6 +275,15 @@ impl ViewState for HomepageState {
             state.poll_interval,
             state.fs_notify_enabled,
         )
+    }
+    async fn trigger_redraw(&mut self) -> Result<(), anyhow::Error> {
+        let mut rcv = self.redraw_trigger.subscribe();
+        rcv.recv().await.ok();
+        while !matches!(
+            rcv.try_recv(),
+            Err(TryRecvError::Empty | TryRecvError::Closed)
+        ) {}
+        Ok(())
     }
 }
 
@@ -384,16 +409,34 @@ impl ExternalState {
         retvl.reload().await?;
         Ok(retvl)
     }
-    pub async fn reload(&mut self) -> Result<(), anyhow::Error> {
-        self.daemon_installed = daemon_is_installed()
-            .await
-            .context("Error checking daemon install state")?;
-        self.daemon_running = daemon_is_running()
-            .await
-            .context("Error checking daemon run state")?;
+    pub async fn reload(&mut self) -> Result<bool, anyhow::Error> {
+        let mut modified = false;
+
+        macro_rules! modify {
+            ($slot:expr, $value:expr) => {{
+                let value = $value;
+                if $slot != value {
+                    $slot = value;
+                    modified = true;
+                }
+            }};
+        }
+
+        modify!(
+            self.daemon_installed,
+            daemon_is_installed()
+                .await
+                .context("Error checking daemon install state")?
+        );
+        modify!(
+            self.daemon_running,
+            daemon_is_running()
+                .await
+                .context("Error checking daemon run state")?
+        );
         let cfg = self.app_state.config().await;
-        self.poll_interval = cfg.system.poll_interval;
-        self.fs_notify_enabled = cfg.system.sync_on_file_change;
-        Ok(())
+        modify!(self.poll_interval, cfg.system.poll_interval);
+        modify!(self.fs_notify_enabled, cfg.system.sync_on_file_change);
+        Ok(modified)
     }
 }
